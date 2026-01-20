@@ -1,0 +1,13 @@
+{
+  "accuracy": 0.03,
+  "precision": 0.03,
+  "recall": 1.0,
+  "f1": 0.05825242718446602,
+  "roc_auc": 0.4810996563573883,
+  "expected_calibration_error": 0.48408570885658264,
+  "uncertainty_error_correlation": 0.04460279116773228,
+  "avg_uncertainty_correct": 0.020421870052814484,
+  "avg_uncertainty_incorrect": 0.02103300392627716,
+  "prediction_interval_coverage": 0.0,
+  "avg_uncertainty": 0.02101467177271843
+}

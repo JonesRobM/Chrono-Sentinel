@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 import torch.nn as nn
-from tqdm import tqdm
 
 from threatsim.data import get_dataloaders
 from threatsim.models import create_model
@@ -203,7 +202,7 @@ def main():
 
     # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimiser, mode="min", factor=0.5, patience=5, verbose=True
+        optimiser, mode="min", factor=0.5, patience=5
     )
 
     # Early stopping

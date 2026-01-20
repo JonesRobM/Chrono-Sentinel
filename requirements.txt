@@ -2,7 +2,5 @@ torch
 pandas
 numpy
 scikit-learn
-transformers
 matplotlib
 seaborn
-jupytext
