@@ -484,10 +484,11 @@ def main():
     )
     print("  Saved: predictions_timeline.png")
 
-    # Save metrics to JSON
+    # Save metrics to JSON (convert numpy types to Python types)
     metrics_path = output_dir / "evaluation_metrics.json"
+    serialisable_metrics = {k: float(v) for k, v in all_metrics.items()}
     with open(metrics_path, "w") as f:
-        json.dump(all_metrics, f, indent=2)
+        json.dump(serialisable_metrics, f, indent=2)
     print(f"\nMetrics saved to: {metrics_path}")
 
     print("\nEvaluation complete!")
