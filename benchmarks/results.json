@@ -1,0 +1,96 @@
+{
+  "label": "local-macos",
+  "target": "http://127.0.0.1:8077",
+  "recorded_at": "2026-08-31T20:06:01+00:00",
+  "conditions": {
+    "measured_requests": 1000,
+    "warmup_requests_discarded": 100,
+    "concurrency": 8,
+    "window_size": 50,
+    "timeout_seconds": 30.0,
+    "client_platform": "Darwin arm64",
+    "client_python": "3.12.14"
+  },
+  "phases": {
+    "mc_samples=2": {
+      "successful_requests": 1000,
+      "failures": {},
+      "wall_seconds": 0.746,
+      "throughput_rps": 1341.1,
+      "concurrency": 8,
+      "client_ms": {
+        "p50": 5.63,
+        "p90": 8.76,
+        "p95": 10.82,
+        "p99": 14.93,
+        "max": 23.68,
+        "mean": 5.95
+      },
+      "server_inference_ms": {
+        "p50": 2.01,
+        "p99": 4.65,
+        "mean": 2.03
+      }
+    },
+    "mc_samples=10": {
+      "successful_requests": 1000,
+      "failures": {},
+      "wall_seconds": 0.803,
+      "throughput_rps": 1245.9,
+      "concurrency": 8,
+      "client_ms": {
+        "p50": 6.33,
+        "p90": 8.66,
+        "p95": 10.15,
+        "p99": 13.03,
+        "max": 18.76,
+        "mean": 6.4
+      },
+      "server_inference_ms": {
+        "p50": 3.07,
+        "p99": 5.29,
+        "mean": 2.82
+      }
+    },
+    "mc_samples=30": {
+      "successful_requests": 1000,
+      "failures": {},
+      "wall_seconds": 0.945,
+      "throughput_rps": 1058.1,
+      "concurrency": 8,
+      "client_ms": {
+        "p50": 7.05,
+        "p90": 9.41,
+        "p95": 10.49,
+        "p99": 12.66,
+        "max": 36.44,
+        "mean": 7.54
+      },
+      "server_inference_ms": {
+        "p50": 3.8,
+        "p99": 6.37,
+        "mean": 4.01
+      }
+    },
+    "mc_samples=100": {
+      "successful_requests": 1000,
+      "failures": {},
+      "wall_seconds": 1.809,
+      "throughput_rps": 552.9,
+      "concurrency": 8,
+      "client_ms": {
+        "p50": 14.36,
+        "p90": 15.93,
+        "p95": 16.4,
+        "p99": 17.64,
+        "max": 23.2,
+        "mean": 14.41
+      },
+      "server_inference_ms": {
+        "p50": 10.59,
+        "p99": 13.07,
+        "mean": 10.6
+      }
+    }
+  }
+}

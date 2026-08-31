@@ -1,0 +1,6 @@
+# Serving layer only. Installed on top of requirements.txt in the container.
+# Kept separate so `threatsim` stays importable without a web stack.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+prometheus-client==0.26.0

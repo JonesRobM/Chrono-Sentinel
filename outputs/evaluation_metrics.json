@@ -1,13 +1,101 @@
 {
-  "accuracy": 0.03,
-  "precision": 0.03,
-  "recall": 1.0,
-  "f1": 0.05825242718446602,
-  "roc_auc": 0.4810996563573883,
-  "expected_calibration_error": 0.48408570885658264,
-  "uncertainty_error_correlation": 0.04460279116773228,
-  "avg_uncertainty_correct": 0.020421870052814484,
-  "avg_uncertainty_incorrect": 0.02103300392627716,
-  "prediction_interval_coverage": 0.0,
-  "avg_uncertainty": 0.02101467177271843
+  "model": {
+    "val": {
+      "threshold": 0.6600195169448853,
+      "roc_auc": 0.5988106875203649,
+      "average_precision": 0.16040146467764232,
+      "precision": 0.4375,
+      "recall": 0.1111111111111111,
+      "f1": 0.17721518987341772,
+      "positive_rate": 0.04414856341976174,
+      "n": 1427
+    },
+    "test": {
+      "threshold": 0.6600195169448853,
+      "roc_auc": 0.7726883761975116,
+      "average_precision": 0.25417522282139027,
+      "precision": 0.10132890365448505,
+      "recall": 0.6039603960396039,
+      "f1": 0.17354196301564723,
+      "positive_rate": 0.03297420829252367,
+      "n": 3063
+    }
+  },
+  "calibration": {
+    "expected_calibration_error_test": 0.46323635570955474
+  },
+  "uncertainty": {
+    "mean_uncertainty": 0.10260796546936035,
+    "uncertainty_std_across_inputs": 0.0327024906873703,
+    "mean_uncertainty_correct": 0.10244718939065933,
+    "mean_uncertainty_incorrect": 0.10329484194517136,
+    "error_detection_auc": 0.5386098324459343,
+    "uncertainty_error_correlation": 0.010161998473968705
+  },
+  "mc_vs_deterministic": {
+    "val": {
+      "deterministic": {
+        "roc_auc": 0.5573942186845413,
+        "average_precision": 0.33542917011273166
+      },
+      "mc_dropout_30": {
+        "roc_auc": 0.5546013126658288,
+        "average_precision": 0.1599513156578705
+      }
+    },
+    "test": {
+      "deterministic": {
+        "roc_auc": 0.7548284875752936,
+        "average_precision": 0.24635301960730843
+      },
+      "mc_dropout_30": {
+        "roc_auc": 0.7758505425154265,
+        "average_precision": 0.27500134847650304
+      }
+    }
+  },
+  "baselines": {
+    "logistic_regression_features": {
+      "val": {
+        "roc_auc": 0.6395638411767444,
+        "average_precision": 0.2549941137001628
+      },
+      "test": {
+        "roc_auc": 0.7864568360954934,
+        "average_precision": 0.16706655949226196
+      }
+    },
+    "logistic_regression_sequence": {
+      "val": {
+        "roc_auc": 0.4417679095098449,
+        "average_precision": 0.03786766618284192
+      },
+      "test": {
+        "roc_auc": 0.5170309063316865,
+        "average_precision": 0.03241301960735896
+      }
+    },
+    "always_anomaly": {
+      "val": {
+        "roc_auc": 0.5,
+        "average_precision": 0.04414856341976174
+      },
+      "test": {
+        "roc_auc": 0.5,
+        "average_precision": 0.03297420829252367
+      }
+    }
+  },
+  "config": {
+    "seed": 42,
+    "mc_samples": 30,
+    "threshold_selected_on": "validation split, max F1",
+    "window_size": 50,
+    "window_frac": 0.02,
+    "test_series": [
+      "realKnownCause/machine_temperature_system_failure.csv",
+      "realAWSCloudwatch/rds_cpu_utilization_cc0c53.csv",
+      "realAWSCloudwatch/elb_request_count_8c0756.csv"
+    ]
+  }
 }

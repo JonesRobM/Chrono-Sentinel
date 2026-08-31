@@ -1,6 +1,9 @@
-torch
-pandas
-numpy
-scikit-learn
-matplotlib
-seaborn
+# Research pipeline (training and evaluation).
+# Pinned so a container build is reproducible; see requirements-serve.txt for
+# the serving extras and CLAUDE.md for the CPU-wheel constraint on torch.
+torch==2.13.0
+pandas==3.0.5
+numpy==2.5.2
+scikit-learn==1.9.0
+matplotlib==3.11.1
+seaborn==0.13.2

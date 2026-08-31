@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- Chrono-Sentinel ---
+# NAB benchmark data, fetched by scripts/fetch_data.py (~100MB if fully cloned)
+NAB_temp/
+
+# Local load-test artefacts; the committed results live in README + benchmarks/
+benchmarks/raw/

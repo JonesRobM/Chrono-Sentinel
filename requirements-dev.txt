@@ -1,0 +1,3 @@
+# Test and load-test tooling.
+pytest==9.1.1
+httpx==0.28.1

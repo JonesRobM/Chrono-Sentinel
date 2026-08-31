@@ -3,10 +3,20 @@ Neural network models for time-series anomaly detection.
 
 This module provides a transformer-based classifier with dropout for
 Monte Carlo Dropout uncertainty quantification.
+
+The model consumes two views of each window: the per-window z-scored sequence,
+which carries shape, and a scaled statistical feature vector, which carries
+the level and scale information that z-scoring necessarily discards. On NAB, a
+logistic regression on the feature vector alone reaches a materially higher
+AUC than one on the z-scored sequence alone, so a sequence-only model is
+working with the weaker of the two views.
+
+The forward pass returns **logits**, not probabilities, so training can use
+BCEWithLogitsLoss. Use predict_proba where a probability is wanted.
 """
 
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -31,7 +41,6 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
-        # Create positional encoding matrix
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
@@ -68,7 +77,8 @@ class TimeSeriesTransformer(nn.Module):
     2. Sinusoidal positional encoding
     3. Stack of transformer encoder layers
     4. Mean pooling across sequence
-    5. Classification head with dropout
+    5. Concatenation with an encoded statistical feature vector
+    6. Classification head with dropout, emitting a logit
 
     Dropout is placed throughout to enable Monte Carlo Dropout at inference
     for uncertainty quantification.
@@ -83,6 +93,7 @@ class TimeSeriesTransformer(nn.Module):
         dim_feedforward: int = 128,
         dropout: float = 0.2,
         max_seq_len: int = 100,
+        feature_dim: int = 0,
     ):
         """
         Args:
@@ -93,19 +104,18 @@ class TimeSeriesTransformer(nn.Module):
             dim_feedforward: Dimension of feedforward network in encoder.
             dropout: Dropout probability (used throughout for MC Dropout).
             max_seq_len: Maximum sequence length for positional encoding.
+            feature_dim: Length of the statistical feature vector. 0 disables
+                the feature branch, leaving a sequence-only model.
         """
         super().__init__()
 
         self.d_model = d_model
         self.dropout_p = dropout
+        self.feature_dim = feature_dim
 
-        # Input projection
         self.input_projection = nn.Linear(input_dim, d_model)
-
-        # Positional encoding
         self.pos_encoder = PositionalEncoding(d_model, max_seq_len, dropout)
 
-        # Transformer encoder layers
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -117,49 +127,78 @@ class TimeSeriesTransformer(nn.Module):
             encoder_layer, num_layers=num_encoder_layers
         )
 
-        # Classification head with dropout
+        # Feature branch: a small MLP so the statistical vector is embedded on
+        # a comparable scale to the pooled sequence representation.
+        head_dim = d_model
+        if feature_dim > 0:
+            feature_hidden = max(16, d_model // 2)
+            self.feature_encoder = nn.Sequential(
+                nn.Linear(feature_dim, feature_hidden),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+            )
+            head_dim = d_model + feature_hidden
+        else:
+            self.feature_encoder = None
+
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
-            nn.Linear(d_model, d_model // 2),
+            nn.Linear(head_dim, head_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(d_model // 2, 1),
+            nn.Linear(head_dim // 2, 1),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, features: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Forward pass through the transformer.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len) or
                (batch_size, seq_len, input_dim).
+            features: Optional statistical features of shape
+                (batch_size, feature_dim). Required when feature_dim > 0.
 
         Returns:
-            Anomaly probability tensor of shape (batch_size,).
+            Logit tensor of shape (batch_size,). Apply a sigmoid for a
+            probability, or use predict_proba.
         """
-        # Handle 2D input (batch_size, seq_len) -> (batch_size, seq_len, 1)
         if x.dim() == 2:
             x = x.unsqueeze(-1)
 
-        # Project to model dimension
-        x = self.input_projection(x)  # (batch, seq_len, d_model)
-
-        # Add positional encoding
+        x = self.input_projection(x)
         x = self.pos_encoder(x)
-
-        # Pass through transformer encoder
-        x = self.transformer_encoder(x)  # (batch, seq_len, d_model)
-
-        # Mean pooling across sequence dimension
+        x = self.transformer_encoder(x)
         x = x.mean(dim=1)  # (batch, d_model)
 
-        # Classification
-        x = self.classifier(x)  # (batch, 1)
+        if self.feature_encoder is not None:
+            if features is None:
+                raise ValueError(
+                    f"Model was built with feature_dim={self.feature_dim} but "
+                    "forward() was called without a features tensor."
+                )
+            x = torch.cat([x, self.feature_encoder(features)], dim=1)
 
-        # Squeeze and apply sigmoid for probability
-        return torch.sigmoid(x.squeeze(-1))
+        return self.classifier(x).squeeze(-1)
 
-    def enable_mc_dropout(self):
+    def predict_proba(
+        self, x: torch.Tensor, features: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Returns anomaly probabilities rather than logits.
+
+        Args:
+            x: Input tensor, as for forward.
+            features: Optional statistical features, as for forward.
+
+        Returns:
+            Probability tensor of shape (batch_size,).
+        """
+        return torch.sigmoid(self.forward(x, features))
+
+    def enable_mc_dropout(self) -> None:
         """
         Enables dropout for Monte Carlo Dropout inference.
 
@@ -171,10 +210,8 @@ class TimeSeriesTransformer(nn.Module):
             if isinstance(module, nn.Dropout):
                 module.train()
 
-    def disable_mc_dropout(self):
-        """
-        Disables dropout for standard inference.
-        """
+    def disable_mc_dropout(self) -> None:
+        """Disables dropout for standard deterministic inference."""
         for module in self.modules():
             if isinstance(module, nn.Dropout):
                 module.eval()
@@ -183,39 +220,73 @@ class TimeSeriesTransformer(nn.Module):
 def mc_dropout_predict(
     model: TimeSeriesTransformer,
     x: torch.Tensor,
+    features: Optional[torch.Tensor] = None,
     n_samples: int = 30,
-) -> tuple:
+    batched: bool = True,
+    manage_mode: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Performs Monte Carlo Dropout prediction for uncertainty quantification.
 
-    Runs multiple forward passes with dropout enabled to obtain a distribution
-    of predictions. The mean gives the point estimate, and the standard
-    deviation provides an uncertainty measure.
+    Runs multiple stochastic forward passes to obtain a distribution of
+    predictions. The mean is the point estimate; the standard deviation is an
+    epistemic uncertainty measure.
+
+    With batched=True the n_samples passes are folded into a single forward
+    pass over a batch of replicated inputs. Dropout masks are sampled
+    elementwise per row, so the replicas remain independent draws and the
+    result is distributionally identical to the sequential loop, but it costs
+    one kernel launch sequence instead of n_samples of them.
 
     Args:
         model: Trained TimeSeriesTransformer model.
         x: Input tensor of shape (batch_size, seq_len) or
            (batch_size, seq_len, input_dim).
+        features: Optional statistical features of shape (batch_size, feature_dim).
         n_samples: Number of stochastic forward passes.
+        batched: Fold the passes into one batch. Set False for the sequential
+            reference implementation.
+        manage_mode: Toggle the dropout modules into train mode on entry and
+            back on exit. Set False when the caller has already enabled dropout
+            and guarantees it stays enabled. Toggling mutates state shared by
+            every thread using the model, so a concurrent server that leaves
+            this True must serialise its forward passes; one that enables
+            dropout once at load can set it False and run passes in parallel.
 
     Returns:
-        Tuple of (mean_predictions, std_predictions) where each has
-        shape (batch_size,).
+        Tuple of (mean_probabilities, std_probabilities), each of shape
+        (batch_size,).
     """
-    model.enable_mc_dropout()
+    was_training = model.training
+    if manage_mode:
+        model.enable_mc_dropout()
 
-    predictions = []
-    with torch.no_grad():
-        for _ in range(n_samples):
-            pred = model(x)
-            predictions.append(pred)
+    batch_size = x.shape[0]
 
-    predictions = torch.stack(predictions, dim=0)  # (n_samples, batch_size)
-
-    mean = predictions.mean(dim=0)
-    std = predictions.std(dim=0)
-
-    model.disable_mc_dropout()
+    try:
+        with torch.no_grad():
+            if batched:
+                repeated_x = x.repeat_interleave(n_samples, dim=0)
+                repeated_features = (
+                    features.repeat_interleave(n_samples, dim=0)
+                    if features is not None
+                    else None
+                )
+                logits = model(repeated_x, repeated_features)
+                # (batch * n_samples,) -> (batch, n_samples)
+                predictions = torch.sigmoid(logits).view(batch_size, n_samples)
+                mean = predictions.mean(dim=1)
+                std = predictions.std(dim=1)
+            else:
+                samples = [
+                    torch.sigmoid(model(x, features)) for _ in range(n_samples)
+                ]
+                stacked = torch.stack(samples, dim=0)  # (n_samples, batch)
+                mean = stacked.mean(dim=0)
+                std = stacked.std(dim=0)
+    finally:
+        if manage_mode and not was_training:
+            model.disable_mc_dropout()
 
     return mean, std
 
@@ -226,6 +297,7 @@ def create_model(
     nhead: int = 4,
     num_layers: int = 2,
     dropout: float = 0.2,
+    feature_dim: int = 0,
 ) -> TimeSeriesTransformer:
     """
     Factory function to create a TimeSeriesTransformer with sensible defaults.
@@ -236,6 +308,8 @@ def create_model(
         nhead: Number of attention heads.
         num_layers: Number of encoder layers.
         dropout: Dropout probability.
+        feature_dim: Length of the statistical feature vector, or 0 to build a
+            sequence-only model.
 
     Returns:
         Configured TimeSeriesTransformer model.
@@ -248,4 +322,5 @@ def create_model(
         dim_feedforward=d_model * 2,
         dropout=dropout,
         max_seq_len=window_size + 10,  # Small buffer
+        feature_dim=feature_dim,
     )

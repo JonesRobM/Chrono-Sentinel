@@ -1,0 +1,22 @@
+# Keep the build context small and the image free of things it must not carry.
+.git/
+.github/
+.claude/
+.venv/
+NAB_temp/
+notebooks/
+tests/
+benchmarks/
+scripts/
+docs/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# outputs/ holds the plots and metrics as well as the two served artefacts.
+# The Dockerfile copies those two explicitly, so exclude the rest.
+outputs/*
+!outputs/best_model.pt
+!outputs/reference.json

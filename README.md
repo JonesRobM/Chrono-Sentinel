@@ -1,190 +1,448 @@
-# Chrono-Sentinel: Time-Series Anomaly Detection with Uncertainty Quantification
+# Chrono-Sentinel
 
-This repository demonstrates applied machine learning on time-series anomaly detection, using the **Numenta Anomaly Benchmark (NAB)** dataset. The pipeline features **transformer-based classification** and **Monte Carlo Dropout uncertainty quantification**.
+Time-series anomaly detection with Monte Carlo Dropout uncertainty, served as a
+containerised HTTP API that reports its own latency, throughput, score
+distribution and population drift.
 
----
+Train a transformer on the [Numenta Anomaly Benchmark](https://github.com/numenta/NAB),
+POST a window of points, get back an anomaly score with an uncertainty
+interval, and scrape `/metrics` to see whether the model has gone stale.
 
-## Project Goals
-
-1. Provide a safe, reproducible environment for modelling defence/security-relevant event sequences without sensitive data.
-2. Demonstrate end-to-end ML pipeline skills: data loading, feature engineering, model training, evaluation, and uncertainty quantification.
-3. Implement modern ML techniques: transformers for time-series and Bayesian uncertainty estimation via MC Dropout.
-4. Benchmark performance on a recognised industry dataset: NAB.
-
----
-
-## Features
-
-* **NAB Data Loading**: Utilities to load and preprocess Numenta Anomaly Benchmark datasets
-* **Sliding Window Processing**: Convert time-series to windowed sequences for classification
-* **Time-Series Feature Extraction**: Statistical features (mean, std, slope, skewness, kurtosis, etc.)
-* **Transformer Architecture**: Attention-based model for temporal pattern recognition
-* **MC Dropout Uncertainty**: Monte Carlo Dropout for uncertainty quantification at inference
-* **Calibration Analysis**: Metrics and visualisations for uncertainty quality assessment
+Every number in this README was measured by a script in this repository, under
+conditions stated beside it. Where something has not been measured yet it says
+`TBD` rather than an estimate.
 
 ---
 
-## Getting Started
+## Quick start
 
-### Prerequisites
-
-* Python 3.8+
-* Git
-
-### Installation
-
-1. **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/your-username/Chrono-Sentinel.git
-    cd Chrono-Sentinel
-    ```
-
-2. **Clone the NAB repository (for data):**
-
-    ```bash
-    git clone https://github.com/numenta/NAB.git NAB_temp
-    ```
-
-3. **Install dependencies:**
-
-    ```bash
-    pip install -r requirements.txt
-    pip install -e .
-    ```
-
-### Quick Start
-
-**Train the model:**
 ```bash
+# 1. Environment
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -r requirements.txt -r requirements-serve.txt -r requirements-dev.txt
+uv pip install -e .
+
+# 2. Data (downloads only the 12 series used, ~2.7 MB, not the 100 MB NAB repo)
+python scripts/fetch_data.py
+
+# 3. Train, evaluate, build the drift reference
 python scripts/train.py
-```
-
-**Evaluate with MC Dropout uncertainty:**
-```bash
 python scripts/evaluate.py
+python scripts/build_reference.py
+
+# 4. Serve
+uvicorn threatsim.serving.app:app --port 8077
 ```
 
-**Or explore interactively via notebooks:**
-```bash
-pip install jupyter
-jupyter notebook notebooks/
-```
-
----
-
-## Usage
-
-### Training
+Score a window:
 
 ```bash
-python scripts/train.py --epochs 50 --batch-size 32 --lr 1e-3
+curl -X POST http://127.0.0.1:8077/score \
+  -H 'Content-Type: application/json' \
+  -d "{\"values\": $(python -c 'print([85.0]*25 + [20.0]*25)')}"
 ```
 
-Key arguments:
-- `--epochs`: Maximum training epochs (default: 50)
-- `--batch-size`: Batch size (default: 32)
-- `--window-size`: Sliding window size (default: 50)
-- `--d-model`: Transformer embedding dimension (default: 64)
-- `--dropout`: Dropout probability for MC Dropout (default: 0.2)
-- `--patience`: Early stopping patience (default: 10)
+```json
+{
+  "score": 0.921,
+  "uncertainty": {"std": 0.061, "lower": 0.799, "upper": 1.0},
+  "mc_samples": 30,
+  "model_version": "711eac756d17",
+  "inference_ms": 2.93
+}
+```
 
-### Evaluation
+That window is a step change, the machine-failure signature; a flat window
+scores around 0.17. Identical requests return slightly different scores
+because MC Dropout is stochastic — that variation *is* the uncertainty being
+reported.
+
+Interactive docs at `/docs`.
+
+---
+
+## Results
+
+### Serving latency
+
+Local, measured with `scripts/loadtest.py`. **Conditions:** Apple M5 Pro
+(15 cores), macOS 26.6.2, Python 3.12, torch 2.13.0 CPU, one uvicorn worker,
+`CHRONO_TORCH_THREADS=1`, window size 50, 1000 measured requests after 100
+discarded warm-up requests, client on the same machine as the server.
+
+Varying the number of Monte Carlo passes, at concurrency 8:
+
+| `mc_samples` | p50 | p99 | throughput |
+| ---: | ---: | ---: | ---: |
+| 2 | 5.63 ms | 14.93 ms | 1341 req/s |
+| 10 | 6.33 ms | 13.03 ms | 1246 req/s |
+| 30 *(default)* | 7.05 ms | 12.66 ms | 1058 req/s |
+| 100 | 14.36 ms | 17.64 ms | 553 req/s |
+
+Cost is sub-linear in `mc_samples` because the passes are folded into one
+batched forward pass rather than looped.
+
+Varying concurrency at `mc_samples=30`, 800 measured requests after 80 warm-up:
+
+| concurrency | p50 | p95 | p99 | max | throughput |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 2.92 ms | 3.06 ms | 3.19 ms | 3.61 ms | 340 req/s |
+| 2 | 3.73 ms | 3.91 ms | 4.01 ms | 4.57 ms | 535 req/s |
+| 4 | 4.29 ms | 4.74 ms | 5.15 ms | 30.08 ms | 906 req/s |
+| **8** | **7.10 ms** | **10.25 ms** | **12.06 ms** | 13.03 ms | **1082 req/s** |
+| 16 | 10.16 ms | 93.76 ms | 193.36 ms | 286.17 ms | 684 req/s |
+| 32 | 52.86 ms | 241.44 ms | 412.67 ms | 672.59 ms | 374 req/s |
+
+Throughput peaks at concurrency 8 and degrades beyond it: past the core count
+the requests queue, and the tail goes first. p50 at concurrency 32 is still
+53 ms while p99 is 413 ms, which is what saturation looks like from the
+outside.
+
+**Deployed (Hugging Face Spaces, free-tier shared CPU): TBD.** Not yet
+deployed. Those numbers will be reported in a separate row, not merged with
+these, because a request through the Spaces proxy from a laptop measures the
+network and a shared vCPU as much as the model.
+
+### MC Dropout batching
+
+`scripts/bench_batching.py`, single-threaded, 300 timed iterations after 50
+discarded, HTTP excluded:
+
+| `mc_samples` | sequential loop | batched | speedup |
+| ---: | ---: | ---: | ---: |
+| 10 | 1.81 ms | 0.77 ms | 2.4x |
+| 30 | 5.46 ms | 2.00 ms | 2.7x |
+| 100 | 18.11 ms | 6.29 ms | 2.9x |
+
+The two forms draw independent dropout masks, so they cannot agree
+sample-for-sample; they agree on what those samples estimate. Over 300 seeded
+draws at `n=30` the mean differs by 0.0003 absolute and sigma by 1.1%
+relative, which is what makes the batched form a substitute rather than a
+different computation. `tests/test_models.py` pins this.
+
+### Model quality
+
+Test is three NAB series never seen in training: `machine_temperature_system_failure`,
+`rds_cpu_utilization_cc0c53`, `elb_request_count_8c0756`. 3063 windows, 3.30%
+anomalous. Reproduce with `python scripts/evaluate.py`.
+
+| method | val AP | val AUC | test AP | test AUC |
+| --- | ---: | ---: | ---: | ---: |
+| **Transformer + MC Dropout** | 0.160 | 0.599 | **0.254** | 0.773 |
+| Logistic regression, 10 features | 0.255 | 0.640 | 0.167 | **0.786** |
+| Logistic regression, z-scored sequence | 0.038 | 0.442 | 0.032 | 0.517 |
+| Always-anomaly (degenerate baseline) | 0.044 | 0.500 | 0.033 | 0.500 |
+
+Average precision is the headline: at a 3.3% base rate, ROC-AUC rewards
+ranking across a vast negative majority, while AP tracks how well the few
+positives are surfaced. The transformer reaches **7.7x the base-rate AP**.
+
+At the threshold that maximises F1 on validation (0.660, never tuned on test):
+precision 0.101, recall 0.604, F1 0.174.
+
+The baselines are in the table because they are the only thing that makes the
+model's number meaningful. Logistic regression on ten statistical features is
+a genuinely competitive baseline here — it wins on test ROC-AUC — and a
+transformer that could not beat it would not be worth serving.
+
+---
+
+## What does not work
+
+A results table that only reports wins is not a result. These are measured and
+reproducible.
+
+**The uncertainty interval does not identify errors.** Error-detection AUC —
+using sigma to rank which predictions are wrong — is **0.539**, against 0.5 for
+chance. Mean sigma is 0.1024 on correct predictions and 0.1033 on incorrect
+ones. The interval is an honest report of the model's output spread, and that
+spread does respond to the input (sigma ranges 0.028–0.262 across the test
+set, coefficient of variation 0.33), but it is close to useless as a
+confidence signal. Treat it as "how much does dropout perturb this
+prediction", not "how likely is this wrong".
+
+**The probabilities are badly calibrated.** Expected Calibration Error is
+**0.463**. Training uses `pos_weight=28.4` to counter the class imbalance,
+which deliberately inflates predicted probabilities far above the 3.3% base
+rate. The scores rank well and mean nothing in absolute terms — threshold them,
+do not read them as probabilities.
+
+**MC Dropout's effect on accuracy is inconsistent.** It exists here for the
+uncertainty interval, not for accuracy, and the ~2.7x latency cost buys
+nothing reliable in ranking quality:
+
+| split | mode | AUC | AP |
+| --- | --- | ---: | ---: |
+| val | deterministic | 0.557 | 0.335 |
+| val | MC Dropout, n=30 | 0.555 | 0.160 |
+| test | deterministic | 0.755 | 0.246 |
+| test | MC Dropout, n=30 | 0.776 | 0.275 |
+
+Averaging helps test AP and halves validation AP. Note also that the
+checkpoint is selected on *deterministic* validation AP but served with MC
+averaging, so selection and deployment are not measuring the same quantity.
+
+**Seed variance is large.** Best validation AP across five seeds: 0.212, 0.245,
+0.267, 0.335, 0.338. Any single-run difference smaller than about 0.1 AP on
+this dataset is noise, including differences in this README.
+
+**Evaluation is stochastic** and therefore seeded (`--seed`, default 42). On an
+identical checkpoint, unseeded runs moved error-detection AUC between 0.43 and
+0.56, because the F1 threshold is chosen from sampled validation scores.
+
+---
+
+## How the detector was fixed
+
+The checkpoint this repository previously shipped scored **ROC-AUC 0.481** —
+worse than chance. It predicted "anomaly" for every window, and its MC Dropout
+sigma was a near-constant 0.021 regardless of input, so the uncertainty
+interval was decorative. Five causes, all now fixed and guarded by tests:
+
+1. **The split was not a split.** `get_dataloaders` concatenated every series
+   and *then* split the concatenation temporally. Because
+   `machine_temperature_system_failure` is ~5.6x longer than
+   `ec2_cpu_utilization_24ae8d`, both boundaries landed inside the first
+   series: train and validation were 100% machine temperature, test was 100%
+   EC2 CPU. It looked like 70/15/15 and was an out-of-distribution transfer
+   test. Now the split is **grouped by series** — disjoint series per split,
+   which measures generalisation to an unseen asset and keeps positive rates
+   comparable (3.40% / 4.41% / 3.30%).
+
+2. **The labels were ~43x too narrow.** `create_anomaly_mask` marked ±30
+   wall-clock minutes around each annotation, which at NAB's 5-minute sampling
+   is ±6 samples. NAB's own convention is a window totalling a fraction of the
+   series length, divided across its anomalies — 567 points for machine
+   temperature. The old labelling left roughly 11 positive training windows.
+   `nab_anomaly_mask` now follows the NAB convention, with the fraction
+   exposed as `--window-frac` (default 0.02; NAB scores with 0.10).
+
+3. **Per-window z-scoring erased the signal.** Normalising each window to zero
+   mean and unit variance discards level and scale, which is precisely what a
+   machine-temperature failure is. It cannot simply be dropped — the service
+   receives a bare window with no series identity, so preprocessing must be a
+   pure function of the window, and a global scaler is worse still (the series
+   span means of 0.1 to 87, and a global scaler measured AUC 0.125). The fix
+   keeps per-window z-scoring for the sequence and **adds a feature branch**:
+   ten statistical features, scaled by a `FeatureScaler` fitted on the training
+   split and persisted in the checkpoint. Level information survives in the
+   feature vector, and both transforms reproduce exactly at serve time.
+
+4. **`nn.BCELoss` on a sigmoid output** with a manually applied ~30x weight.
+   Now `BCEWithLogitsLoss(pos_weight=...)` on logits.
+
+5. **Model selection on validation loss.** At a 3% positive rate, loss is
+   dominated by the negative class and a model collapsing to the prior posts a
+   respectable one. Selection is now on validation average precision.
+
+Two smaller findings, both measured: the `ReduceLROnPlateau` scheduler *hurt*
+(best validation AP 0.335 → 0.227 on seed 42, because plateau detection halves
+the rate during dips the run recovers from) and is now opt-in; and training
+runs on CPU by default, because MPS numerics shifted results enough that a
+sweep run and a training run disagreed on identical hyperparameters.
+
+`python scripts/train.py` with no flags reproduces the shipped checkpoint
+byte-for-byte (sha256 `711eac756d17…`).
+
+---
+
+## API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /score` | Score one window; returns score, uncertainty interval, model version, server-side inference time |
+| `GET /healthz` | Liveness. Does not touch the model |
+| `GET /readyz` | Readiness. Reports model version, expected window size, default MC samples. 503 until loaded |
+| `GET /drift` | Human-readable population drift against the training reference |
+| `GET /metrics` | Prometheus text exposition |
+
+Liveness and readiness are separate because loading the checkpoint takes long
+enough that a combined probe reports a crash loop during a slow cold start —
+exactly when it happens on a free-tier host.
+
+`POST /score` takes `values` (exactly the model's window size; query `/readyz`)
+and optional `mc_samples` (2–200). Both bound inference cost, so both are
+validated: a wrong-length window is rejected with 422 rather than padded,
+because silently reshaping the input would return a confident score for
+something the caller did not ask about.
+
+---
+
+## Observability
+
+`/metrics` answers the four questions an operator asks of a deployed model:
+
+| Question | Metric |
+| --- | --- |
+| How much traffic? | `chrono_requests_total{endpoint,status}` |
+| How fast? | `chrono_request_latency_seconds`, `chrono_inference_latency_seconds` |
+| What is it saying? | `chrono_anomaly_score`, `chrono_uncertainty_std` |
+| Is it still valid? | `chrono_drift_psi{feature}`, `chrono_drift_max_psi` |
+
+Latency buckets are tuned for a CPU forward pass in the single-digit-to-tens
+of milliseconds; the `prometheus_client` defaults start at 5 ms and would put
+almost every observation in one bucket. No metric is labelled by anything
+client-controlled — an unmatched route reports `endpoint="unmatched"` rather
+than letting a caller mint unbounded time series.
+
+### Drift
+
+`scripts/build_reference.py` records how the model's inputs and outputs were
+distributed **on the training split only**, into `outputs/reference.json`. The
+service keeps a rolling buffer of recent requests and reports the Population
+Stability Index against that reference, per input feature and for the score
+distribution:
+
+```
+PSI < 0.10   stable
+0.10 - 0.25  moderate
+PSI > 0.25   significant
+```
+
+The reference is never rebuilt from live traffic. Doing so would let it drift
+along with the data and report stability while the model quietly went stale,
+which is the exact failure this is meant to catch. PSI is withheld until the
+buffer holds at least 50 observations, because on fewer it is binning noise.
+
+It works in both directions, which is the part worth testing: `tests/test_reference.py`
+asserts PSI stays below 0.10 on an unshifted sample and exceeds 0.25 on a
+three-sigma shift, on a variance change alone, and on an output-only collapse
+with inputs held fixed.
+
+---
+
+## Architecture
+
+```
+Raw window (50 points)
+    |
+    +-- per-window z-score ------> Transformer encoder (2 layers, 4 heads, d=64)
+    |                                        |
+    |                                   mean pooling
+    |                                        |
+    +-- 10 statistical features ---> feature MLP
+        (scaled by the checkpoint's                 |
+         FeatureScaler)                    concatenate
+                                                    |
+                                          classifier -> logit
+                                                    |
+                                       30x stochastic passes
+                                                    |
+                                        mean = score, sd = uncertainty
+```
+
+72,129 parameters. Both preprocessing paths are pure functions of the incoming
+window plus fixed constants from the checkpoint, so training and serving apply
+identical transforms.
+
+The service enables dropout **once at load** and never toggles it. Toggling per
+request needs a lock — one request's exit would disable dropout inside
+another's forward pass and silently collapse its uncertainty to zero — and that
+lock would serialise every forward pass. With dropout left on, scoring mutates
+no shared state, `/score` is a sync endpoint dispatched to FastAPI's
+threadpool, and requests genuinely overlap. That is what the concurrency table
+above is measuring.
+
+---
+
+## Deployment
+
+Actions builds and pushes to GitHub Container Registry on every `v*` tag; the
+Hugging Face Space deploys that exact image.
+
+```
+git tag v0.2.0  ->  .github/workflows/release.yml  ->  ghcr.io/<owner>/chrono-sentinel:v0.2.0
+                                                              |
+                                                     spaces/Dockerfile
+                                                     FROM ghcr.io/...:v0.2.0
+                                                              |
+                                                     Hugging Face Space
+```
+
+Three things about this chain are easy to get wrong:
+
+- **Spaces cannot pull an arbitrary registry tag.** Its Docker SDK builds a
+  Dockerfile in the Space repo. `spaces/Dockerfile` is that link — two lines,
+  `FROM` a pinned GHCR tag — so what runs is the image CI tested, not a
+  rebuild that might differ.
+- **The GHCR package must be public**, or the Space builder cannot pull it.
+- **Pin a concrete tag, never `:latest`**, or the deployed artefact is not the
+  one this README's numbers describe. The release workflow deliberately
+  publishes no `latest` tag.
+
+The image installs torch from the CPU wheel index. The default PyPI wheel
+bundles CUDA, producing a ~2.5 GB image whose cold start times out on
+free-tier hosts, for a service that never sees a GPU. ONNX is not an
+alternative: MC Dropout needs dropout live at inference, and export folds it
+away.
+
+**Image size and container cold start: TBD.** Docker is not installed on the
+development machine, so the image has not been built locally. CI builds it,
+runs a container, waits for `/readyz`, scores a real window and asserts the
+uncertainty is non-zero, then reports the size — so those numbers will come
+from the first CI run.
+
+---
+
+## Layout
+
+```
+threatsim/
+  data.py           NAB loading, NAB-convention labelling, grouped splits, FeatureScaler
+  features.py       10 statistical window features
+  models.py         Transformer + batched MC Dropout
+  reference.py      Drift reference profile and PSI
+  utils.py          Seeding, checkpoint IO, plots
+  serving/
+    app.py          FastAPI application
+    inference.py    Checkpoint loading and the preprocessing contract
+    metrics.py      Prometheus collectors and the rolling drift buffer
+    schemas.py      Request/response models and validation bounds
+scripts/
+  fetch_data.py       Download only the NAB series used
+  train.py            Training
+  evaluate.py         Metrics, calibration, uncertainty quality, baselines
+  build_reference.py  Drift reference from the training split
+  loadtest.py         Latency and throughput
+  bench_batching.py   MC Dropout batching speedup and equivalence
+tests/              105 tests
+.github/workflows/  CI (test + build + container smoke test), Release (GHCR on tag)
+spaces/             Hugging Face Space Dockerfile and README front-matter
+```
+
+## Reproducing every number here
 
 ```bash
-python scripts/evaluate.py --model-path outputs/best_model.pt --mc-samples 30
+python scripts/fetch_data.py
+python scripts/train.py                       # checkpoint, byte-identical
+python scripts/evaluate.py                    # model quality table, "what does not work"
+python scripts/build_reference.py
+python scripts/bench_batching.py              # batching table
+
+uvicorn threatsim.serving.app:app --port 8077 &
+python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --sweep-mc 2,10,30,100
+python scripts/loadtest.py --requests 800 --concurrency 8 --warmup 80 --mc-samples 30
+
+pytest tests/ -q                              # 105 tests
 ```
 
-Key arguments:
-- `--model-path`: Path to trained model checkpoint
-- `--mc-samples`: Number of MC Dropout forward passes (default: 30)
-- `--threshold`: Classification threshold (default: 0.5)
-
-### Outputs
-
-Training and evaluation produce:
-- `outputs/best_model.pt` - Trained model checkpoint
-- `outputs/training_history.json` - Training metrics
-- `outputs/training_history.png` - Loss curves
-- `outputs/evaluation_metrics.json` - Test metrics
-- `outputs/roc_curve.png` - ROC curve
-- `outputs/calibration_curve.png` - Reliability diagram
-- `outputs/uncertainty_histogram.png` - Uncertainty analysis
-- `outputs/predictions_timeline.png` - Predictions with confidence bands
+Latency figures are machine-specific; the conditions are stated above so a
+rerun elsewhere is comparable rather than merely different.
 
 ---
 
-## Project Structure
+## Limitations
 
-```
-Chrono-Sentinel/
-├── README.md
-├── requirements.txt
-├── setup.py
-├── threatsim/
-│   ├── __init__.py
-│   ├── data.py           # NAB data loading, windowing, DataLoaders
-│   ├── features.py       # Statistical feature extraction
-│   ├── models.py         # Transformer with MC Dropout
-│   └── utils.py          # Training utilities, visualisation helpers
-├── scripts/
-│   ├── train.py          # Training pipeline
-│   └── evaluate.py       # MC Dropout evaluation
-├── notebooks/
-│   ├── 01_generate_data.ipynb        # Data exploration
-│   ├── 02_feature_engineering.ipynb  # Feature analysis
-│   └── 03_model_training.ipynb       # Interactive training
-├── NAB_temp/             # Cloned NAB repository (data source)
-└── outputs/              # Training outputs (created at runtime)
-```
-
----
-
-## Model Architecture
-
-The transformer architecture is designed for time-series anomaly classification:
-
-```
-Input Window (batch, seq_len)
-    ↓
-Linear Projection → (batch, seq_len, d_model=64)
-    ↓
-Sinusoidal Positional Encoding
-    ↓
-2× Transformer Encoder Layers (4 heads, dropout=0.2)
-    ↓
-Mean Pooling
-    ↓
-Classification Head (Linear → Dropout → Linear → Sigmoid)
-    ↓
-Output: Anomaly Probability
-```
-
-**MC Dropout Uncertainty**: Dropout remains active during inference. Multiple forward passes produce a distribution of predictions; the mean gives the estimate and standard deviation gives uncertainty.
-
----
-
-## Key Concepts
-
-### Monte Carlo Dropout
-
-MC Dropout treats dropout as approximate Bayesian inference:
-1. Keep dropout enabled at inference time
-2. Run N forward passes (default: 30)
-3. Mean of predictions → point estimate
-4. Std of predictions → epistemic uncertainty
-
-This allows the model to express "I don't know" through higher uncertainty, particularly valuable for anomaly detection where novel patterns may not match training data.
-
-### Calibration Metrics
-
-We evaluate uncertainty quality via:
-- **Expected Calibration Error (ECE)**: Measures prediction confidence vs actual accuracy
-- **Uncertainty-Error Correlation**: Higher uncertainty should correlate with errors
-- **Prediction Interval Coverage**: Do confidence intervals contain true values?
-
----
+- The detector generalises across NAB series, which is a harder and more
+  honest setting than a within-series split, but NAB is 12 series of one
+  sample every five minutes. Nothing here has been tested on higher-frequency
+  or multivariate data.
+- Univariate only. `POST /score` takes one channel.
+- The service holds one model. There is no A/B path, no shadow scoring, and
+  no automatic retraining when drift fires — `/drift` reports, a human decides.
+- Drift is measured over a rolling in-memory buffer, so it resets when the
+  container restarts, and on a free-tier Space that happens whenever it sleeps.
 
 ## Licence
 
-This project is for educational and portfolio demonstration purposes.
+MIT. Educational and portfolio use.
