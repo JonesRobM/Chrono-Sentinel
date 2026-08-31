@@ -2,12 +2,14 @@
 #
 # Two things about this image are load-bearing:
 #
-#   1. torch comes from the CPU wheel index. The default PyPI wheel bundles
-#      CUDA and produces a ~2.5 GB image whose cold start times out on
-#      free-tier hosts. The CPU wheel is roughly an order of magnitude smaller
-#      and this service never sees a GPU.
+#   1. torch comes from the CPU wheel index. On Linux the default PyPI wheel
+#      declares seven CUDA requirements (cuda-toolkit, cudnn, cusparselt,
+#      nccl, nvshmem and friends) for a service that never sees a GPU. The
+#      +cpu wheel drops all of them.
 #   2. Dependencies are installed before the application code is copied, so
 #      editing a source file does not reinstall torch.
+#   3. Only runtime dependencies are installed, not the research set. See
+#      requirements-runtime.txt.
 #
 # Listens on $PORT, defaulting to 7860 for Hugging Face Spaces.
 
@@ -24,12 +26,14 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0
 
-COPY requirements.txt requirements-serve.txt ./
+COPY requirements-runtime.txt requirements-serve.txt ./
 
-# torch is already installed above; installing it again from PyPI here would
-# pull the CUDA wheel and undo the point of the previous layer.
-RUN grep -v '^torch==' requirements.txt > requirements-notorch.txt \
-    && pip install --no-cache-dir -r requirements-notorch.txt -r requirements-serve.txt
+# Runtime dependencies only. requirements.txt is the *research* set: pandas,
+# matplotlib, scikit-learn, scipy and seaborn are used by training and
+# evaluation and by nothing the service executes. Installing them here added
+# ~300 MB to the image, so the package __init__ is lazy (PEP 562) and the
+# serving path imports only numpy and torch.
+RUN pip install --no-cache-dir -r requirements-runtime.txt -r requirements-serve.txt
 
 
 FROM python:3.12-slim

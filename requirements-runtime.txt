@@ -1,0 +1,11 @@
+# Minimum the scoring service needs at runtime, installed in the container
+# alongside requirements-serve.txt.
+#
+# Deliberately NOT requirements.txt. pandas, matplotlib, scikit-learn, scipy
+# and seaborn are training and evaluation dependencies; the service uses none
+# of them. Installing the full research set added ~300 MB of site-packages to
+# the image for code that never executes in it.
+#
+# torch is installed separately in the Dockerfile from the CPU wheel index,
+# so it is not listed here.
+numpy==2.5.2

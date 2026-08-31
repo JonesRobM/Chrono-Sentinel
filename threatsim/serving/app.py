@@ -45,7 +45,7 @@ from threatsim.serving.schemas import (
 logger = logging.getLogger("chrono_sentinel")
 
 SERVICE_NAME = "chrono-sentinel"
-SERVICE_VERSION = "0.2.0"
+SERVICE_VERSION = "0.2.1"
 
 
 def _env_path(name: str, default: str) -> Path:

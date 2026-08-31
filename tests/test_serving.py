@@ -8,6 +8,8 @@ correctness ones: both the window length and the MC sample count multiply
 into inference cost, so an unbounded value is a denial of service.
 """
 
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -292,3 +294,49 @@ class TestDrift:
         for name, entry in body["features"].items():
             assert entry["status"] in {"stable", "moderate", "significant"}
             assert entry["psi"] >= 0
+
+
+class TestImportFootprint:
+    """
+    The serving import chain must stay light.
+
+    pandas, matplotlib, scikit-learn, scipy and seaborn are training and
+    evaluation dependencies. When `threatsim/__init__.py` imported everything
+    eagerly, importing the app pulled matplotlib and pandas in, and the
+    container had to install the whole research stack: 1.87 GB versus 1.35 GB.
+    A module-level heavy import anywhere in the serving chain silently undoes
+    that, so it is asserted rather than assumed.
+
+    Run in a subprocess because the rest of this suite imports pandas, so
+    sys.modules in-process says nothing about what the service alone needs.
+    """
+
+    FORBIDDEN = ("pandas", "matplotlib", "sklearn", "scipy", "seaborn")
+
+    def test_service_does_not_import_the_research_stack(self):
+        probe = (
+            "import sys; import threatsim.serving.app; "
+            f"bad=[m for m in {self.FORBIDDEN!r} if m in sys.modules]; "
+            "print(','.join(bad))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        leaked = [m for m in result.stdout.strip().split(",") if m]
+        assert not leaked, (
+            f"the serving import chain now pulls in {leaked}, which adds "
+            "hundreds of MB to the container image"
+        )
+
+    def test_scaler_is_importable_without_pandas_or_torch_dataloaders(self):
+        """FeatureScaler must stay in the dependency-light module."""
+        probe = (
+            "import sys; from threatsim.scaling import FeatureScaler; "
+            "print('pandas' in sys.modules)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert result.stdout.strip() == "False"

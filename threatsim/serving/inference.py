@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 import torch
 
-from threatsim.data import FeatureScaler
+from threatsim.scaling import FeatureScaler
 from threatsim.features import extract_window_features, get_feature_names
 from threatsim.models import TimeSeriesTransformer, create_model, mc_dropout_predict
 

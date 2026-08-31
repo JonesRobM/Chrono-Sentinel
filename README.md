@@ -351,10 +351,10 @@ Actions builds and pushes to GitHub Container Registry on every `v*` tag; the
 Hugging Face Space deploys that exact image.
 
 ```
-git tag v0.2.0  ->  .github/workflows/release.yml  ->  ghcr.io/<owner>/chrono-sentinel:v0.2.0
+git tag v0.2.1  ->  .github/workflows/release.yml  ->  ghcr.io/<owner>/chrono-sentinel:v0.2.1
                                                               |
                                                      spaces/Dockerfile
-                                                     FROM ghcr.io/...:v0.2.0
+                                                     FROM ghcr.io/...:v0.2.1
                                                               |
                                                      Hugging Face Space
 ```
@@ -366,21 +366,42 @@ Three things about this chain are easy to get wrong:
   `FROM` a pinned GHCR tag — so what runs is the image CI tested, not a
   rebuild that might differ.
 - **The GHCR package must be public**, or the Space builder cannot pull it.
+  A package is created only by a successful push, so the release workflow
+  has to go green before the visibility setting exists to change.
 - **Pin a concrete tag, never `:latest`**, or the deployed artefact is not the
   one this README's numbers describe. The release workflow deliberately
   publishes no `latest` tag.
 
-The image installs torch from the CPU wheel index. The default PyPI wheel
-bundles CUDA, producing a ~2.5 GB image whose cold start times out on
-free-tier hosts, for a service that never sees a GPU. ONNX is not an
-alternative: MC Dropout needs dropout live at inference, and export folds it
-away.
+The image installs torch from the CPU wheel index. On Linux the default PyPI
+wheel declares seven CUDA requirements (`cuda-toolkit`, `nvidia-cudnn`,
+`cusparselt`, `nccl`, `nvshmem` and others) for a service that never sees a
+GPU; the `+cpu` wheel drops all of them, and the running container reports
+`torch 2.13.0+cpu`. ONNX is not an alternative: MC Dropout needs dropout live
+at inference, and export folds it away.
 
-**Image size and container cold start: TBD.** Docker is not installed on the
-development machine, so the image has not been built locally. CI builds it,
-runs a container, waits for `/readyz`, scores a real window and asserts the
-uncertainty is non-zero, then reports the size — so those numbers will come
-from the first CI run.
+**Image size, measured on linux/arm64:**
+
+| image contents | size |
+| --- | ---: |
+| full research requirements installed | 1.87 GB |
+| **runtime requirements only** | **1.35 GB** |
+
+The service needs numpy and torch, not pandas, matplotlib, scikit-learn,
+scipy or seaborn. Those were arriving through the package `__init__`, so
+`threatsim/__init__.py` resolves its exports lazily (PEP 562) and the image
+installs `requirements-runtime.txt` rather than `requirements.txt`. That is
+worth 520 MB. torch is 635 MB of the remaining 873 MB of site-packages, which
+is close to the floor without changing frameworks.
+`tests/test_serving.py::TestImportFootprint` asserts the serving import chain
+stays light, because a single module-level import would undo it silently.
+
+Cold start from `docker run` to `/readyz` returning ready: **1.14 s** locally.
+On free-tier Spaces it will be considerably slower — shared CPU, and the
+image has to be pulled first. That figure is still TBD.
+
+CI builds the image, runs a container, waits for `/readyz`, scores a real
+window, asserts the uncertainty is non-zero, and prints both the image size
+and the runner's free disk.
 
 ---
 
@@ -405,7 +426,7 @@ scripts/
   build_reference.py  Drift reference from the training split
   loadtest.py         Latency and throughput
   bench_batching.py   MC Dropout batching speedup and equivalence
-tests/              105 tests
+tests/              107 tests
 .github/workflows/  CI (test + build + container smoke test), Release (GHCR on tag)
 spaces/             Hugging Face Space Dockerfile and README front-matter
 ```
@@ -423,7 +444,7 @@ uvicorn threatsim.serving.app:app --port 8077 &
 python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --sweep-mc 2,10,30,100
 python scripts/loadtest.py --requests 800 --concurrency 8 --warmup 80 --mc-samples 30
 
-pytest tests/ -q                              # 105 tests
+pytest tests/ -q                              # 107 tests
 ```
 
 Latency figures are machine-specific; the conditions are stated above so a

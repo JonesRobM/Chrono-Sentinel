@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="threatsim",
-    version="0.2.0",
+    version="0.2.1",
     description=(
         "Time-series anomaly detection with transformers, Monte Carlo Dropout "
         "uncertainty, and a containerised scoring service"

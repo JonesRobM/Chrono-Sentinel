@@ -19,7 +19,6 @@ window with no series identity.
 """
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -29,6 +28,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from threatsim.features import extract_features, get_feature_names
+from threatsim.scaling import FeatureScaler
 
 
 # Series held out entirely for validation and test. Chosen to span both NAB
@@ -263,49 +263,6 @@ def normalise_windows(windows: np.ndarray) -> np.ndarray:
     # Avoid division by zero
     std = np.where(std == 0, 1.0, std)
     return (windows - mean) / std
-
-
-@dataclass
-class FeatureScaler:
-    """
-    Zero-mean, unit-variance scaler for the statistical feature vector.
-
-    Fitted on the training split only and persisted in the model checkpoint,
-    so training and serving apply exactly the same transform.
-    """
-
-    mean: np.ndarray
-    std: np.ndarray
-    feature_names: List[str]
-
-    @classmethod
-    def fit(cls, features: np.ndarray) -> "FeatureScaler":
-        """Fits the scaler to a (n_samples, n_features) array."""
-        mean = features.mean(axis=0)
-        std = features.std(axis=0)
-        std = np.where(std == 0, 1.0, std)
-        return cls(mean=mean, std=std, feature_names=get_feature_names())
-
-    def transform(self, features: np.ndarray) -> np.ndarray:
-        """Applies the fitted transform."""
-        return ((features - self.mean) / self.std).astype(np.float32)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialises to plain lists for checkpointing."""
-        return {
-            "mean": self.mean.tolist(),
-            "std": self.std.tolist(),
-            "feature_names": self.feature_names,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "FeatureScaler":
-        """Restores a scaler from its serialised form."""
-        return cls(
-            mean=np.asarray(payload["mean"], dtype=np.float32),
-            std=np.asarray(payload["std"], dtype=np.float32),
-            feature_names=list(payload["feature_names"]),
-        )
 
 
 class TimeSeriesDataset(Dataset):

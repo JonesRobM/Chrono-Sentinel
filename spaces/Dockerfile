@@ -12,6 +12,6 @@
 #
 # Copy this file, and spaces/README.md, to the root of the Space repository.
 
-FROM ghcr.io/jonesrobm/chrono-sentinel:v0.2.0
+FROM ghcr.io/jonesrobm/chrono-sentinel:v0.2.1
 
 EXPOSE 7860

@@ -30,8 +30,8 @@ jobs:
           cache: pip
 
       - name: Install CPU-only torch
-        # The default PyPI wheel bundles CUDA: ~2.5 GB for a job that has no
-        # GPU. Same constraint as the Dockerfile.
+        # On Linux the default PyPI wheel declares seven CUDA requirements
+        # for a job with no GPU. Same constraint as the Dockerfile.
         run: |
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0
@@ -81,23 +81,26 @@ jobs:
           load: true
           tags: chrono-sentinel:ci
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Smoke test the container
         # Building is not evidence the image runs. Start it, wait for
         # readiness, and score a real window.
         run: |
           docker run -d --name chrono -p 7860:7860 chrono-sentinel:ci
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:7860/readyz > /dev/null; then break; fi
             sleep 2
           done
+          curl -sf http://127.0.0.1:7860/readyz > /dev/null || {
+            echo "::error::Service never became ready"; docker logs chrono; exit 1;
+          }
           echo "--- /readyz ---"
           curl -sf http://127.0.0.1:7860/readyz | tee readyz.json
-          python -c "import json;assert json.load(open('readyz.json'))['ready'],'service not ready'"
-          WINDOW=$(python -c "import json;print(json.load(open('readyz.json'))['window_size'])")
+          python3 -c "import json;assert json.load(open('readyz.json'))['ready'],'service not ready'"
+          WINDOW=$(python3 -c "import json;print(json.load(open('readyz.json'))['window_size'])")
           echo "--- /score ---"
-          python -c "
+          python3 -c "
           import json, urllib.request
           n = $WINDOW
           body = json.dumps({'values': [85.0 + (i % 7) for i in range(n)]}).encode()
@@ -111,9 +114,15 @@ jobs:
           echo "--- /metrics ---"
           curl -sf http://127.0.0.1:7860/metrics | grep -c chrono_
 
-      - name: Report image size
-        # Cold start on free-tier hosts scales with this, so keep it visible.
-        run: docker image ls chrono-sentinel:ci --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+      - name: Report image size and runner disk
+        # Cold start on free-tier hosts scales with image size, and a torch
+        # image plus build cache is enough to fill a runner. Both are printed
+        # so a size or space regression is visible in the log.
+        if: always()
+        run: |
+          docker image ls chrono-sentinel:ci --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+          echo "--- runner disk ---"
+          df -h /
 
       - name: Container logs on failure
         if: failure()

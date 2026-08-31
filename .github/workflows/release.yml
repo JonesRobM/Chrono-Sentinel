@@ -18,7 +18,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   publish:
@@ -57,11 +56,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute lowercase image name
+        id: image
+        # GHCR rejects uppercase in a package path, and github.repository
+        # preserves the repository's casing. metadata-action lowercases as a
+        # convenience, but relying on that leaves the name it publishes under
+        # implicit -- and spaces/Dockerfile has to hardcode the same string.
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Derive tags and labels
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
           # No :latest. spaces/Dockerfile pins a concrete tag so the deployed
           # artefact is always identifiable; a floating tag would make the
           # README's measured numbers unattributable to any specific image.
@@ -83,7 +90,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Summarise the release
         run: |
@@ -97,9 +104,10 @@ jobs:
             echo "Digest: \`${{ steps.build.outputs.digest }}\`"
             echo
             echo "#### To deploy"
-            echo "1. Make the GHCR package **public** "
-            echo "   (Packages -> chrono-sentinel -> Package settings -> Change visibility)."
-            echo "   The Hugging Face Space builder is unauthenticated and cannot pull a private image."
+            echo "1. Make the GHCR package **public**: your profile -> Packages ->"
+            echo "   chrono-sentinel -> Package settings -> Danger Zone ->"
+            echo "   Change visibility -> Public. The Hugging Face Space builder is"
+            echo "   unauthenticated and cannot pull a private image."
             echo "2. Update the \`FROM\` line in the Space's Dockerfile to this version tag."
             echo "3. The Space rebuilds and deploys this exact image."
           } >> "$GITHUB_STEP_SUMMARY"
