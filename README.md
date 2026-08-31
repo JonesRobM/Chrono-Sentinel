@@ -426,7 +426,7 @@ scripts/
   build_reference.py  Drift reference from the training split
   loadtest.py         Latency and throughput
   bench_batching.py   MC Dropout batching speedup and equivalence
-tests/              107 tests
+tests/              75 tests
 .github/workflows/  CI (test + build + container smoke test), Release (GHCR on tag)
 spaces/             Hugging Face Space Dockerfile and README front-matter
 ```
@@ -444,7 +444,7 @@ uvicorn threatsim.serving.app:app --port 8077 &
 python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --sweep-mc 2,10,30,100
 python scripts/loadtest.py --requests 800 --concurrency 8 --warmup 80 --mc-samples 30
 
-pytest tests/ -q                              # 107 tests
+pytest tests/ -q                              # 75 tests
 ```
 
 Latency figures are machine-specific; the conditions are stated above so a

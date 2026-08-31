@@ -1,6 +1,7 @@
 # Research pipeline (training and evaluation).
 # Pinned so a container build is reproducible; see requirements-serve.txt for
-# the serving extras and CLAUDE.md for the CPU-wheel constraint on torch.
+# the serving extras. torch must come from the CPU wheel index; see the
+# Dockerfile and .github/workflows/ci.yml.
 torch==2.13.0
 pandas==3.0.5
 numpy==2.5.2

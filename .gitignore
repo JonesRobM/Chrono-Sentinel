@@ -212,3 +212,8 @@ NAB_temp/
 
 # Local load-test artefacts; the committed results live in README + benchmarks/
 benchmarks/raw/
+
+# Local agent tooling and instructions. Deliberately not part of the codebase:
+# these configure an assistant working on the repo, not the project itself.
+.claude/
+CLAUDE.md
