@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Regenerates the fully-pinned lock files from the human-edited requirements.
+#
+# Why lock at all: requirements*.txt pin only direct dependencies, so a fresh
+# resolve in CI can pick different transitive versions than the ones tested
+# locally. fastapi, for instance, allows `starlette>=0.46.0` with no upper
+# bound, and starlette already warns that it is dropping the httpx support
+# that fastapi's TestClient relies on. That is the classic "passes on my
+# machine, errors at import in CI" failure.
+#
+# Why torch is excluded: on Linux, torch's PyPI metadata declares nineteen
+# CUDA packages (cuda-toolkit, nvidia-cudnn, nccl, ...). Compiling it into the
+# lock would drag every one of them into CI and the image. torch is therefore
+# installed separately from the CPU wheel index, and the locks below cover
+# everything else. Do not add torch to these inputs.
+#
+# Usage:
+#     ./scripts/lock_requirements.sh
+#
+# Requires uv (https://docs.astral.sh/uv/).
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+PYTHON_VERSION=3.12
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# The research set minus torch.
+grep -v '^torch==' requirements.txt > "$WORK/research-notorch.txt"
+
+echo "Locking full dev/CI environment -> requirements.lock"
+uv pip compile --universal --quiet --python-version "$PYTHON_VERSION" \
+    "$WORK/research-notorch.txt" requirements-serve.txt requirements-dev.txt \
+    -o requirements.lock
+
+echo "Locking container runtime          -> requirements-runtime.lock"
+uv pip compile --universal --quiet --python-version "$PYTHON_VERSION" \
+    requirements-runtime.txt requirements-serve.txt \
+    -o requirements-runtime.lock
+
+# Fail loudly rather than silently shipping a multi-gigabyte CUDA stack.
+for lock in requirements.lock requirements-runtime.lock; do
+    if grep -qiE '^(nvidia-|cuda-|triton)' "$lock"; then
+        echo "ERROR: $lock contains CUDA packages. torch must not be a compile input." >&2
+        exit 1
+    fi
+done
+
+echo "Done. Both locks are CUDA-free."

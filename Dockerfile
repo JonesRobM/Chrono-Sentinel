@@ -26,14 +26,14 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0
 
-COPY requirements-runtime.txt requirements-serve.txt ./
+COPY requirements-runtime.lock ./
 
 # Runtime dependencies only. requirements.txt is the *research* set: pandas,
 # matplotlib, scikit-learn, scipy and seaborn are used by training and
 # evaluation and by nothing the service executes. Installing them here added
 # ~300 MB to the image, so the package __init__ is lazy (PEP 562) and the
 # serving path imports only numpy and torch.
-RUN pip install --no-cache-dir -r requirements-runtime.txt -r requirements-serve.txt
+RUN pip install --no-cache-dir -r requirements-runtime.lock
 
 
 FROM python:3.12-slim
