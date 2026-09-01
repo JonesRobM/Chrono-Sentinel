@@ -1,34 +1,36 @@
 """
 Model loading and scoring for the HTTP service.
 
-Preprocessing here must match training exactly, and must be a pure function of
-the incoming window: the service receives a bare list of values with no series
+No torch. The forward pass runs in numpy (threatsim.serving.forward), loaded
+from the artefact `scripts/export_weights.py` writes. torch is 635 MB of image
+for a 76k-parameter model whose serving path needs nothing but a forward pass,
+and `tests/test_forward_parity.py` holds the two implementations to the same
+numbers.
+
+Preprocessing must match training exactly and must be a pure function of the
+incoming window: the service receives a bare list of values with no series
 identity, so anything fitted per-series at training time would be
-unreproducible at serve time. The two transforms are therefore
+unreproducible here. The two transforms are
 
   1. per-window z-scoring of the sequence  (pure function of the window)
-  2. the statistical feature vector, scaled by the FeatureScaler persisted in
-     the checkpoint  (fitted on the training split, fixed thereafter)
+  2. the statistical feature vector, scaled by the FeatureScaler exported
+     alongside the weights  (fitted on the training split, fixed thereafter)
 
-Both are applied by `AnomalyScorer.preprocess`, which is the single place the
-contract is expressed.
+`AnomalyScorer.preprocess` is the single place that contract is expressed.
 """
 
-import hashlib
 import time
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from threatsim.features import extract_window_features, get_feature_names
-from threatsim.models import TimeSeriesTransformer, create_model, mc_dropout_predict
 from threatsim.scaling import FeatureScaler
+from threatsim.serving.forward import NumpyModel
 
-DEFAULT_CHECKPOINT = Path("outputs/best_model.pt")
+DEFAULT_WEIGHTS = Path("outputs/model.npz")
 
 # Bounds on the client-supplied MC sample count. An unbounded value is a
 # trivial denial of service: cost is linear in the number of passes.
@@ -51,108 +53,65 @@ class ScoreResult:
 
 class AnomalyScorer:
     """
-    Loads a trained checkpoint and scores windows with MC Dropout uncertainty.
+    Loads exported weights and scores windows with MC Dropout uncertainty.
 
-    Instances are safe to share across requests and across threads. Dropout is
-    switched on once at load and left on, so scoring never mutates module
-    state; the forward pass then reads parameters only, and PyTorch releases
-    the GIL inside its kernels, so concurrent requests genuinely overlap.
-
-    The alternative -- toggling dropout on and off around each prediction --
-    would need a lock, because one request's exit would disable dropout inside
-    another request's forward pass and silently collapse its uncertainty to
-    zero. That lock would serialise all inference.
+    Safe to share across requests and threads. Nothing here mutates model
+    state: the numpy backend takes an explicit `training` flag and a random
+    generator per call, so concurrent requests cannot interfere. The torch
+    backend needed care on exactly this point, because toggling dropout
+    modules is global to the model.
     """
 
     def __init__(
         self,
-        model: TimeSeriesTransformer,
+        model: NumpyModel,
         scaler: FeatureScaler | None,
-        config: dict[str, Any],
-        model_version: str,
         default_mc_samples: int = 30,
+        seed: int | None = None,
     ):
         """
         Args:
-            model: Loaded model in eval mode.
-            scaler: Feature scaler from the checkpoint, or None for a
-                sequence-only model.
-            config: Checkpoint config dictionary.
-            model_version: Short content hash identifying the checkpoint.
+            model: Loaded numpy model.
+            scaler: Feature scaler exported with the weights, or None.
             default_mc_samples: Passes used when a request does not specify.
+            seed: Optional seed for the dropout generator. Leave None in
+                production; set it where reproducible scores are wanted.
         """
         self.model = model
         self.scaler = scaler
-        self.config = config
-        self.model_version = model_version
         self.default_mc_samples = default_mc_samples
-        self.window_size: int = int(config["window_size"])
-        self.feature_dim: int = int(config.get("feature_dim", 0))
+        self.window_size: int = model.window_size
+        self.feature_dim: int = model.feature_dim
+        self.model_version: str = model.model_version
         self.feature_names: list[str] = (
             scaler.feature_names if scaler is not None else get_feature_names()
         )
-        # Enable dropout once, permanently. Every prediction this class makes
-        # is a Monte Carlo one, so there is no deterministic path to protect.
-        self.model.enable_mc_dropout()
+        self._rng = np.random.default_rng(seed)
 
     @classmethod
-    def from_checkpoint(
+    def from_weights(
         cls,
-        path: Path = DEFAULT_CHECKPOINT,
-        device: str = "cpu",
+        path: Path = DEFAULT_WEIGHTS,
         default_mc_samples: int = 30,
-        num_threads: int | None = None,
+        seed: int | None = None,
     ) -> "AnomalyScorer":
         """
-        Builds a scorer from a saved checkpoint.
+        Builds a scorer from the exported .npz.
 
         Args:
-            path: Checkpoint path.
-            device: Torch device string. CPU is the deployment target.
+            path: Path to the artefact from scripts/export_weights.py.
             default_mc_samples: Passes used when a request does not specify.
-            num_threads: torch intra-op thread count. On a small shared
-                container the default oversubscribes and adds latency; the
-                service sets this explicitly.
+            seed: Optional seed for the dropout generator.
 
         Returns:
             A ready AnomalyScorer.
         """
-        path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Checkpoint {path} not found. Train one with scripts/train.py"
-            )
-
-        if num_threads is not None:
-            torch.set_num_threads(num_threads)
-
-        payload = torch.load(path, map_location=device, weights_only=False)
-        config = payload.get("config")
-        if config is None:
-            raise ValueError(
-                f"Checkpoint {path} has no config block; it predates the "
-                "serving layer and cannot be served. Retrain with scripts/train.py."
-            )
-
-        model = create_model(
-            window_size=config["window_size"],
-            d_model=config["d_model"],
-            nhead=config.get("nhead", 4),
-            num_layers=config["num_layers"],
-            dropout=config["dropout"],
-            feature_dim=config.get("feature_dim", 0),
-        )
-        model.load_state_dict(payload["model_state_dict"])
-        model.eval()
-
-        scaler_payload = config.get("feature_scaler")
+        model = NumpyModel.from_npz(Path(path))
+        scaler_payload = model.config.get("feature_scaler")
         scaler = FeatureScaler.from_dict(scaler_payload) if scaler_payload else None
+        return cls(model, scaler, default_mc_samples, seed)
 
-        version = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
-
-        return cls(model, scaler, config, version, default_mc_samples)
-
-    def preprocess(self, values: Sequence[float]) -> tuple:
+    def preprocess(self, values) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Turns a raw window into the two model inputs.
 
@@ -160,8 +119,8 @@ class AnomalyScorer:
             values: Raw time-series values, exactly window_size of them.
 
         Returns:
-            Tuple of (normalised sequence tensor, scaled feature tensor or None,
-            scaled feature vector as a numpy array).
+            Tuple of (normalised sequence, scaled feature vector or None),
+            both shaped (1, ...).
 
         Raises:
             ValueError: If the window is the wrong length or not finite.
@@ -177,33 +136,24 @@ class AnomalyScorer:
         if not np.all(np.isfinite(window)):
             raise ValueError("values must all be finite (no NaN or infinity)")
 
-        # Per-window z-score: pure function of this window.
-        mean = window.mean()
+        # Per-window z-score: a pure function of this window.
         std = window.std()
-        sequence = (window - mean) / (std if std > 0 else 1.0)
+        sequence = (window - window.mean()) / (std if std > 0 else 1.0)
 
         scaled_features = None
-        feature_tensor = None
         if self.feature_dim > 0:
-            raw_features = extract_window_features(window)
+            raw = extract_window_features(window)
             scaled_features = (
-                self.scaler.transform(raw_features.reshape(1, -1))[0]
+                self.scaler.transform(raw.reshape(1, -1))
                 if self.scaler is not None
-                else raw_features
+                else raw.reshape(1, -1).astype(np.float32)
             )
-            feature_tensor = torch.from_numpy(
-                np.ascontiguousarray(scaled_features.reshape(1, -1))
-            ).float()
 
-        sequence_tensor = torch.from_numpy(
-            np.ascontiguousarray(sequence.reshape(1, -1))
-        ).float()
-
-        return sequence_tensor, feature_tensor, scaled_features
+        return sequence.reshape(1, -1), scaled_features
 
     def score(
         self,
-        values: Sequence[float],
+        values,
         mc_samples: int | None = None,
         interval_sigma: float = 2.0,
     ) -> ScoreResult:
@@ -228,23 +178,18 @@ class AnomalyScorer:
                 f"mc_samples must be between {MIN_MC_SAMPLES} and {MAX_MC_SAMPLES}"
             )
 
-        sequence, features, scaled_features = self.preprocess(values)
+        sequence, features = self.preprocess(values)
 
-        # perf_counter around the forward pass only, so the reported
-        # inference time excludes validation and JSON handling.
+        # Timed around the forward pass only, so the reported figure excludes
+        # validation and JSON handling.
         began = time.perf_counter()
-        mean, std = mc_dropout_predict(
-            self.model,
-            sequence,
-            features,
-            n_samples=samples,
-            batched=True,
-            manage_mode=False,
+        mean, std = self.model.mc_dropout_predict(
+            sequence, features, n_samples=samples, rng=self._rng
         )
         elapsed = time.perf_counter() - began
 
-        score = float(mean.item())
-        uncertainty = float(std.item())
+        score = float(mean[0])
+        uncertainty = float(std[0])
 
         return ScoreResult(
             score=score,
@@ -253,20 +198,22 @@ class AnomalyScorer:
             interval_upper=min(1.0, score + interval_sigma * uncertainty),
             mc_samples=samples,
             scaled_features=(
-                scaled_features
-                if scaled_features is not None
+                features[0]
+                if features is not None
                 else np.zeros(len(self.feature_names), dtype=np.float32)
             ),
             inference_seconds=elapsed,
         )
 
     def info(self) -> dict[str, str]:
-        """Returns identifying metadata for /healthz and the metrics endpoint."""
+        """Identifying metadata for /readyz and the metrics endpoint."""
+        config: dict[str, Any] = self.model.config
         return {
             "model_version": self.model_version,
+            "backend": "numpy",
             "window_size": str(self.window_size),
             "feature_dim": str(self.feature_dim),
-            "d_model": str(self.config.get("d_model", "")),
-            "num_layers": str(self.config.get("num_layers", "")),
-            "dropout": str(self.config.get("dropout", "")),
+            "d_model": str(config.get("d_model", "")),
+            "num_layers": str(config.get("num_layers", "")),
+            "dropout": str(config.get("dropout", "")),
         }

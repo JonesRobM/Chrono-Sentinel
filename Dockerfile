@@ -1,17 +1,20 @@
 # Chrono-Sentinel scoring service.
 #
-# Two things about this image are load-bearing:
+# There is no deep-learning framework in this image. The model is 76k
+# parameters and the service only ever needs a forward pass, so the forward
+# pass is implemented in numpy (threatsim/serving/forward.py) and the weights
+# ship as a 282 KB .npz written by scripts/export_weights.py. torch stays in
+# the training environment, where autograd and DataLoaders actually matter.
 #
-#   1. torch comes from the CPU wheel index. On Linux the default PyPI wheel
-#      declares seven CUDA requirements (cuda-toolkit, cudnn, cusparselt,
-#      nccl, nvshmem and friends) for a service that never sees a GPU. The
-#      +cpu wheel drops all of them.
-#   2. Dependencies are installed before the application code is copied, so
-#      editing a source file does not reinstall torch.
-#   3. Only runtime dependencies are installed, not the research set. See
-#      requirements-runtime.txt.
+# That is worth roughly 1.2 GB of image. The risk it introduces -- two
+# implementations of one function, which could silently diverge -- is held in
+# check by tests/test_forward_parity.py, which pins the numpy path to torch's
+# numbers on both the deterministic and the Monte Carlo paths.
 #
-# Listens on $PORT, defaulting to 7860 for Hugging Face Spaces.
+# Dependencies are installed before application code is copied, so editing a
+# source file does not reinstall them.
+#
+# Listens on $PORT, defaulting to 7860.
 
 FROM python:3.12-slim AS builder
 
@@ -20,35 +23,24 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /build
 
-# CPU-only torch first and on its own, so the large download is cached in its
-# own layer and is not invalidated by a change to any other pin.
-RUN pip install --no-cache-dir \
-    --index-url https://download.pytorch.org/whl/cpu \
-    torch==2.13.0
-
 COPY requirements-runtime.lock ./
 
-# Runtime dependencies only. requirements.txt is the *research* set: pandas,
-# matplotlib, scikit-learn, scipy and seaborn are used by training and
-# evaluation and by nothing the service executes. Installing them here added
-# ~300 MB to the image, so the package __init__ is lazy (PEP 562) and the
-# serving path imports only numpy and torch.
 RUN pip install --no-cache-dir -r requirements-runtime.lock
 
 
 FROM python:3.12-slim
 
-# Non-root. Spaces runs containers as uid 1000, so match it: files this user
-# owns stay writable there without a chown at startup.
+# Non-root, uid 1000 to match common container hosts, so files this user owns
+# stay writable without a chown at startup.
 RUN useradd --create-home --uid 1000 chrono
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=7860 \
-    CHRONO_MODEL_PATH=/app/outputs/best_model.pt \
+    CHRONO_MODEL_PATH=/app/outputs/model.npz \
     CHRONO_REFERENCE_PATH=/app/outputs/reference.json \
     CHRONO_MC_SAMPLES=30 \
-    CHRONO_TORCH_THREADS=1 \
+    CHRONO_WORKERS=1 \
     HOME=/home/chrono
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
@@ -58,10 +50,10 @@ WORKDIR /app
 
 COPY threatsim/ ./threatsim/
 
-# The served artefacts. Both are required at runtime: without the checkpoint
-# the service starts but reports itself unready, and without the reference it
-# serves scores but reports no drift.
-COPY outputs/best_model.pt outputs/reference.json ./outputs/
+# The served artefacts. Both are required: without the weights the service
+# starts but reports itself unready, and without the reference it serves
+# scores but reports no drift.
+COPY outputs/model.npz outputs/reference.json ./outputs/
 
 USER chrono
 
@@ -70,11 +62,14 @@ EXPOSE 7860
 # Bind 0.0.0.0, not 127.0.0.1: a loopback bind is unreachable from outside the
 # container and presents as a hung deploy.
 #
-# One worker deliberately. The model is held in process memory and scoring is
-# CPU-bound, so on a 2-vCPU host extra workers multiply memory and contend for
-# the same cores. Concurrency comes from FastAPI's threadpool instead: /score
-# is a sync endpoint and AnomalyScorer holds no lock.
-CMD ["sh", "-c", "exec uvicorn threatsim.serving.app:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1"]
+# One worker by default, which suits a small host. Concurrency within a worker
+# comes from FastAPI's threadpool (/score is sync and the numpy backend holds
+# no lock), but numpy's many small operations hold the GIL more than torch's
+# kernels do, so a single worker plateaus around 360 req/s. Raising
+# CHRONO_WORKERS sidesteps that: 4 workers measured 475 req/s at ~58 MB RSS
+# each, which is affordable now the image no longer carries a framework. On a
+# 2-vCPU host leave it at 1 or 2.
+CMD ["sh", "-c", "exec uvicorn threatsim.serving.app:app --host 0.0.0.0 --port ${PORT:-7860} --workers ${CHRONO_WORKERS:-1}"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"7860\")}/healthz').read()" || exit 1

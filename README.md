@@ -15,26 +15,30 @@ scores a window of points. Monte Carlo Dropout puts an interval around each
 score. `/metrics` tells you whether the traffic still looks like the data the
 model was trained on.
 
+The container carries **no deep-learning framework**. Training uses PyTorch;
+the service runs the forward pass in numpy from a 282 KB weights file, which
+takes the image from 1.35 GB to 355 MB.
+
 Run it without cloning anything:
 
 ```bash
-docker run --rm -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.2.2
+docker run --rm -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.3.0
 ```
 
 ![Scoring demo](docs/demo.gif)
 
 | Payload | Shape | Score |
 | --- | --- | ---: |
-| `examples/flat_window.json` | constant | 0.17 |
-| `examples/noisy_window.json` | high variance, no level shift | 0.32 |
-| `examples/step_change.json` | level shift | 0.93 |
+| `examples/flat_window.json` | constant | 0.16 |
+| `examples/noisy_window.json` | high variance, no level shift | 0.31 |
+| `examples/step_change.json` | level shift | 0.91 |
 
 | | |
 | --- | --- |
-| **Model** | Transformer + statistical-feature branch, 72k params, MC Dropout |
-| **Test performance** | ROC-AUC 0.77, average precision 0.25 against a 0.033 base rate, three held-out NAB series |
-| **Serving** | FastAPI, ~9 ms p50, peak ~820 req/s at concurrency 8 |
-| **Image** | 1.35 GB, CPU-only torch, non-root, ~1 s to ready |
+| **Model** | Transformer + statistical-feature branch, 76k params, MC Dropout |
+| **Test performance** | ROC-AUC 0.78, average precision 0.30 against a 0.033 base rate, three held-out NAB series |
+| **Serving** | FastAPI, 6.7 ms p50 single-client, ~360 req/s at concurrency 8 |
+| **Image** | 355 MB, no framework, non-root, 0.54 s to ready |
 | **Observability** | Prometheus latency, throughput, score distribution, PSI drift |
 | **Pipeline** | Locked dependencies, lint + tests + container smoke test in CI, GHCR on tag |
 
@@ -54,6 +58,7 @@ uv pip install -r requirements.lock && uv pip install -e . --no-deps
 python scripts/fetch_data.py        # ~2.7 MB, only the 12 NAB series used
 python scripts/train.py             # reproduces the shipped checkpoint exactly
 python scripts/evaluate.py
+python scripts/export_weights.py    # best_model.pt -> model.npz for serving
 python scripts/build_reference.py
 
 uvicorn threatsim.serving.app:app --port 8077
@@ -66,9 +71,8 @@ uvicorn threatsim.serving.app:app --port 8077
 ### Latency
 
 Measured with `scripts/loadtest.py` on an Apple M5 Pro (15 cores), macOS 26.6.2,
-one uvicorn worker, `CHRONO_TORCH_THREADS=1`, window size 50, 1000 requests
-after 100 discarded warm-ups. Run-to-run variance is around 10%, so read these
-to one significant figure.
+one uvicorn worker, window size 50, 1000 requests after 100 discarded warm-ups.
+Run-to-run variance is around 10%, so read these to one significant figure.
 
 ![Load test](docs/loadtest.gif)
 
@@ -76,48 +80,59 @@ What the Monte Carlo sample count costs, at concurrency 8:
 
 | `mc_samples` | p50 | p99 | throughput |
 | ---: | ---: | ---: | ---: |
-| 2 | 7.9 ms | 20.8 ms | 930 req/s |
-| 10 | 8.5 ms | 16.5 ms | 913 req/s |
-| 30 *(default)* | 10.4 ms | 22.9 ms | 715 req/s |
-| 100 | 16.9 ms | 22.4 ms | 470 req/s |
+| 2 | 9.4 ms | 15.1 ms | 855 req/s |
+| 10 | 11.3 ms | 19.6 ms | 690 req/s |
+| 30 *(default)* | 22.2 ms | 26.1 ms | 359 req/s |
+| 100 | 65.5 ms | 70.8 ms | 122 req/s |
 
-Fifty times the samples costs roughly twice the latency, because the passes are
-folded into one batched forward pass rather than looped.
+Concurrency, at `mc_samples=30`, 600 requests after 60 warm-ups:
 
-Concurrency, at `mc_samples=30`, 800 requests after 80 warm-ups:
+| concurrency | p50 | p95 | p99 | throughput |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 6.7 ms | 7.2 ms | 9.0 ms | 148 req/s |
+| 4 | 13.3 ms | 14.1 ms | 16.6 ms | 299 req/s |
+| 8 | 22.2 ms | 24.7 ms | 27.9 ms | 359 req/s |
+| 16 | 44.0 ms | 51.8 ms | 56.7 ms | 358 req/s |
 
-| concurrency | p50 | p95 | p99 | max | throughput |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 4.1 ms | 4.5 ms | 5.5 ms | 6.7 ms | 243 req/s |
-| 2 | 4.9 ms | 5.7 ms | 6.4 ms | 7.3 ms | 405 req/s |
-| 4 | 5.5 ms | 6.9 ms | 7.7 ms | 8.5 ms | 713 req/s |
-| **8** | **9.4 ms** | **13.9 ms** | **16.7 ms** | 23.9 ms | **816 req/s** |
-| 16 | 15.7 ms | 121.6 ms | 248.7 ms | 435.6 ms | 470 req/s |
-| 32 | 75.1 ms | 431.5 ms | 615.1 ms | 988.8 ms | 238 req/s |
-
-Throughput peaks at 8 and falls off a cliff after. Past the core count requests
-queue, and the tail goes first: at concurrency 32 the median is still 75 ms
-while the 99th percentile is 615 ms.
+Throughput plateaus at about 360 req/s. numpy's many small operations hold the
+GIL more than torch's kernels do, so one worker saturates early. Four workers
+measured 475 req/s at ~58 MB resident each, which is affordable now the image
+carries no framework — set `CHRONO_WORKERS`. On a 2-vCPU host leave it at 1.
 
 There's no hosted-endpoint row: this project ships a container, not a URL (see
 [Deployment](#deployment)). `scripts/loadtest.py --url <host>` gives you the
 same table against anything you deploy it to.
 
-### MC Dropout batching
+### The cost of dropping torch
 
-`scripts/bench_batching.py`, single-threaded, 300 iterations after 50 discarded,
-HTTP excluded:
+`scripts/bench_batching.py`, batch 1, single-threaded, 300 iterations after 50
+discarded, HTTP excluded:
 
-| `mc_samples` | sequential loop | batched | speedup |
+| | torch | numpy |
+| --- | ---: | ---: |
+| forward pass, `mc_samples=30` | 4.9 ms | 5.7 ms |
+| image | 1.35 GB | **355 MB** |
+| cold start to `/readyz` | 1.14 s | **0.54 s** |
+| peak throughput | ~715 req/s | ~360 req/s (475 with 4 workers) |
+
+Per-request cost is close to a wash. Throughput is where numpy loses, and image
+size and cold start are where it wins. For a project whose deployment target is
+a small free host, that trade is worth taking; for a high-throughput service it
+would not be.
+
+Two bugs found while optimising the numpy path, both worth knowing about:
+`np.sqrt(head_dim)` returns a *strong* float64 numpy scalar, which under NEP 50
+promotes the whole attention path to float64; and the dropout RNG defaults to
+float64, which was 44% of a prediction. Fixing both took 9.4 ms to 5.7 ms.
+
+Batching the Monte Carlo passes into one forward pass over replicated inputs,
+rather than looping, is worth a further 1.6-1.8x:
+
+| `mc_samples` | sequential | batched | speedup |
 | ---: | ---: | ---: | ---: |
-| 10 | 1.70 ms | 0.82 ms | 2.1x |
-| 30 | 5.15 ms | 2.27 ms | 2.3x |
-| 100 | 17.53 ms | 7.46 ms | 2.4x |
-
-Independent dropout masks mean the two can't match sample-for-sample, but they
-must agree on what those samples estimate. Over 300 seeded draws at `n=30` the
-mean differs by 0.0003 and sigma by 1.1%. `tests/test_models.py` pins that — a
-faster function that quietly changes the uncertainty semantics is a bug.
+| 10 | 3.36 ms | 2.04 ms | 1.6x |
+| 30 | 10.07 ms | 5.73 ms | 1.8x |
+| 100 | 33.28 ms | 18.93 ms | 1.8x |
 
 ### Model quality
 
@@ -127,20 +142,23 @@ anomalous. Reproduce with `python scripts/evaluate.py`.
 
 | method | val AP | val AUC | test AP | test AUC |
 | --- | ---: | ---: | ---: | ---: |
-| **Transformer + MC Dropout** | 0.160 | 0.599 | **0.254** | 0.773 |
+| **Transformer + MC Dropout** | 0.156 | 0.573 | **0.304** | 0.781 |
 | Logistic regression, 10 features | 0.255 | 0.640 | 0.167 | **0.786** |
 | Logistic regression, z-scored sequence | 0.038 | 0.442 | 0.032 | 0.517 |
 | Always-anomaly | 0.044 | 0.500 | 0.033 | 0.500 |
 
-Average precision is the headline: at a 3.3% base rate ROC-AUC rewards ranking
+Average precision is the headline. At a 3.3% base rate, ROC-AUC rewards ranking
 across a huge negative majority, while AP tracks how well the few positives get
-surfaced. The transformer manages 7.7x the base rate. At the threshold that
-maximises F1 on validation (0.66, never tuned on test): precision 0.10, recall
-0.60, F1 0.17.
+surfaced. The transformer manages 9.2x the base rate.
+
+At the threshold that maximises F1 on validation (0.925, never tuned on test):
+precision 0.92, recall 0.11, F1 0.19. It is a high-precision, low-recall
+operating point — it catches a ninth of the anomalies and is almost never wrong
+when it fires.
 
 Logistic regression on ten statistical features is genuinely competitive and
-wins on test ROC-AUC. A transformer that couldn't beat it wouldn't be worth
-serving.
+still wins on test ROC-AUC. A transformer that couldn't beat it wouldn't be
+worth serving.
 
 | | |
 | :-: | :-: |
@@ -151,54 +169,69 @@ serving.
 ## What doesn't work
 
 **The uncertainty interval doesn't identify errors.** Using sigma to rank which
-predictions are wrong gives an AUC of 0.54, against 0.5 for a coin flip. Mean
-sigma is 0.1024 on correct predictions and 0.1033 on incorrect ones.
+predictions are wrong gives an AUC of 0.42 — worse than a coin flip. Mean sigma
+is 0.1001 on correct predictions and 0.0934 on incorrect ones, so if anything
+the model is marginally *more* confident when it's wrong.
 
 ![Uncertainty, correct vs incorrect](outputs/uncertainty_histogram.png)
 
-The two distributions sit on top of each other. Sigma does respond to the input
-— 0.028 to 0.262 across the test set, coefficient of variation 0.33 — so it's a
-real measurement. It's measuring how much dropout perturbs a prediction, not how
+Sigma does respond to the input (0.03 to 0.26 across the test set), so it's a
+real measurement. It measures how much dropout perturbs a prediction, not how
 likely that prediction is to be wrong.
 
-**The probabilities are badly calibrated.** Expected Calibration Error is 0.46.
+**The probabilities are badly calibrated.** Expected Calibration Error is 0.47.
 Training uses `pos_weight=28.4` to counter the class imbalance, which inflates
 predicted probabilities well above the 3.3% base rate. Threshold the scores;
 don't read them as probabilities.
 
 ![Reliability diagram](outputs/calibration_curve.png)
 
-**MC Dropout doesn't reliably improve accuracy.** It's there for the interval,
-and the ~2.3x latency it costs buys nothing dependable in ranking quality:
+**MC Dropout helps on test and hurts on validation.** It's there for the
+interval, and its effect on ranking is not dependable:
 
 | split | mode | AUC | AP |
 | --- | --- | ---: | ---: |
 | val | deterministic | 0.557 | 0.335 |
-| val | MC Dropout, n=30 | 0.555 | 0.160 |
+| val | MC Dropout, n=30 | 0.587 | 0.164 |
 | test | deterministic | 0.755 | 0.246 |
-| test | MC Dropout, n=30 | 0.776 | 0.275 |
+| test | MC Dropout, n=30 | 0.783 | 0.291 |
 
-Averaging helps test AP and halves validation AP. The checkpoint is also
-selected on *deterministic* validation AP but served with MC averaging, so
-selection and deployment aren't quite measuring the same thing.
+The checkpoint is also selected on *deterministic* validation AP but served with
+MC averaging, so selection and deployment aren't quite measuring the same thing.
 
 **Seed variance is large.** Best validation AP across five seeds: 0.212, 0.245,
 0.267, 0.335, 0.338. Any single-run difference below about 0.1 AP on this
 dataset is noise, including differences quoted above.
 
-**Evaluation is stochastic**, so it's seeded (`--seed`, default 42). On an
-identical checkpoint, unseeded runs moved the error-detection AUC between 0.43
-and 0.56, because the F1 threshold comes from sampled validation scores.
+**Evaluation is stochastic**, so it's seeded (`--seed`, default 42).
 
 ---
 
-## Fixing the detector
+## Two bugs worth reading about
+
+### MC Dropout was only sampling a third of the network
+
+Porting the forward pass to numpy made the two implementations disagree on
+sigma by 5%. Bisecting the dropout sites found the reason:
+`nn.TransformerEncoderLayer` takes a fused inference path while it is in eval
+mode, and that kernel **never consults its dropout submodules**.
+
+`enable_mc_dropout()` set twelve dropout sites to train mode. The eight inside
+the encoder were switched on and then silently ignored — measured contribution
+to variance, exactly zero. The uncertainty came only from the positional
+encoding, the feature branch and the classifier head.
+
+The fix is to put `TransformerEncoderLayer` and `MultiheadAttention` in train
+mode too, not just `nn.Dropout`. It moved test average precision from 0.254 to
+0.304, and moved the error-detection AUC from 0.54 to 0.42 — the detector got
+better and the uncertainty got measurably worse.
+`tests/test_forward_parity.py::test_all_dropout_sites_contribute` guards it.
+
+### The split wasn't a split
 
 The checkpoint this repo originally shipped scored **ROC-AUC 0.481** — worse
-than chance. It called every window an anomaly, and its MC Dropout sigma was a
-flat 0.021 whatever the input, so the interval was decorative.
-
-Five causes, all fixed, all now guarded by `tests/test_data.py`:
+than chance. It called every window an anomaly, and its sigma was a flat 0.021
+whatever the input. Five causes, all fixed, all guarded by `tests/test_data.py`:
 
 1. **The split wasn't a split.** `get_dataloaders` concatenated every series
    and *then* split by time. One series was 5.6x longer than the other, so both
@@ -220,7 +253,7 @@ Five causes, all fixed, all now guarded by `tests/test_data.py`:
    that window, and a global scaler is worse still (AUC 0.125; the series span
    means from 0.1 to 87). The fix keeps z-scoring for the sequence and **adds a
    feature branch** of ten statistical features, scaled by a `FeatureScaler`
-   fitted on train and stored in the checkpoint.
+   fitted on train and stored with the weights.
 
 4. **`nn.BCELoss` on a sigmoid output** with a hand-applied weight, rather than
    `BCEWithLogitsLoss(pos_weight=...)` on logits.
@@ -249,7 +282,7 @@ byte-for-byte (sha256 `711eac756d17…`).
 | `GET /drift` | Population drift against the training reference |
 | `GET /metrics` | Prometheus exposition |
 
-Liveness and readiness are separate because loading the checkpoint takes long
+Liveness and readiness are separate because loading the weights takes long
 enough that a combined probe would report a crash loop during a slow cold start.
 
 `POST /score` takes `values` (exactly the model's window size — check `/readyz`)
@@ -321,7 +354,7 @@ Raw window (50 points)
     |                                   mean pooling
     |                                        |
     +-- 10 statistical features ---> feature MLP
-        (scaled by the checkpoint's                 |
+        (scaled by the exported                     |
          FeatureScaler)                    concatenate
                                                     |
                                           classifier -> logit
@@ -331,16 +364,33 @@ Raw window (50 points)
                                         mean = score, sd = uncertainty
 ```
 
-72,129 parameters. Both preprocessing paths are pure functions of the incoming
-window plus constants from the checkpoint, so training and serving apply
+76,000 parameters. Both preprocessing paths are pure functions of the incoming
+window plus constants exported with the weights, so training and serving apply
 identical transforms.
 
-Dropout is switched on once at load and never toggled. Toggling per request
-needs a lock — one request's exit would disable dropout mid-forward-pass in
-another and silently collapse its uncertainty to zero — and that lock would
-serialise every forward pass. Left on, scoring mutates no shared state, `/score`
-runs on FastAPI's threadpool, and requests genuinely overlap. That's what the
-concurrency table measures.
+### Two backends, one forward pass
+
+```
+train.py (PyTorch) ──► best_model.pt ──► export_weights.py ──► model.npz
+                             │                                     │
+                             ▼                                     ▼
+                   evaluate.py (PyTorch)                 serving/ (numpy only)
+```
+
+Training keeps PyTorch, which is where autograd and DataLoaders matter. The
+container runs `threatsim/serving/forward.py`, about 150 lines of numpy.
+
+Reproducing `nn.TransformerEncoderLayer` exactly needs three details that are
+easy to get wrong: `in_proj_weight` packs Q, K and V into one (3d, d) matrix;
+`norm_first=False` means post-norm, so `x = norm1(x + sa(x))`; and there are
+twelve dropout sites, including one on the attention weights inside the
+attention block.
+
+Two implementations of one function is a real hazard — they could diverge and
+the service would return confident wrong answers.
+`tests/test_forward_parity.py` is the contract: deterministic logits agree to
+2.4e-07, and over 150 seeded repeats the Monte Carlo mean agrees within 0.002
+and sigma within 0.3%.
 
 ---
 
@@ -350,7 +400,7 @@ Actions builds and pushes to GHCR on every `v*` tag. The published image is the
 deliverable: a public, immutable tag anyone can run.
 
 ```
-git tag v0.2.2  ->  release.yml  ->  ghcr.io/jonesrobm/chrono-sentinel:0.2.2
+git tag v0.3.0  ->  release.yml  ->  ghcr.io/jonesrobm/chrono-sentinel:0.3.0
                                               |
                                 docker run -p 7860:7860 <tag>
 ```
@@ -364,8 +414,8 @@ tier or wants a card. A public image beats a dead URL.
 Four things about the release chain are easy to get wrong; `release.yml` handles
 all four:
 
-- **No leading `v` on the published tag.** A git tag of `v0.2.2` publishes
-  `0.2.2` — `metadata-action`'s `{{version}}` strips it.
+- **No leading `v` on the published tag.** A git tag of `v0.3.0` publishes
+  `0.3.0` — `metadata-action`'s `{{version}}` strips it.
 - **No `:latest`.** `metadata-action` adds it by default on a semver push, so
   the workflow sets `flavor: latest=false`. A floating tag would make the
   numbers above unattributable to any particular image.
@@ -379,29 +429,16 @@ all four:
   Public returns `{"token":"..."}`; private or absent returns `DENIED`.
 - **`linux/amd64` only.** Pulling on Apple Silicon needs `--platform linux/amd64`.
 
-torch comes from the CPU wheel index: the default Linux wheel declares seven
-CUDA requirements for a service that never sees a GPU. ONNX isn't an
-alternative, since MC Dropout needs dropout live at inference and export folds
-it away.
-
-| image | arch | size |
+| image | contents | size |
 | --- | --- | ---: |
-| full research requirements | arm64, local | 1.87 GB |
-| **runtime requirements only** | **arm64, local** | **1.35 GB** |
-| **published release image** | **amd64, GHCR** | **1.48 GB** |
+| v0.2.x | CPU-only torch + runtime deps | 1.35 GB |
+| **v0.3.0** | **numpy + FastAPI, no framework** | **355 MB** |
 
-The service needs numpy and torch, not pandas, matplotlib, scikit-learn, scipy
-or seaborn. Those were arriving via the package `__init__`, so it now resolves
-exports lazily (PEP 562) and the image installs `requirements-runtime.lock`.
-Worth 520 MB. torch is 635 MB of the remaining 873 MB, near the floor without
-dropping the framework entirely.
-`tests/test_serving.py::TestImportFootprint` guards it — one module-level import
-would undo the lot.
+site-packages is 120 MB of that, down from 873 MB. Dropping torch also removed
+the CUDA problem entirely: torch's Linux wheel declares seven CUDA requirements
+on PyPI, which is why earlier versions had to install from the CPU wheel index.
 
-Cold start from `docker run` to `/readyz` is **1.14 s** on a native arm64 build.
-The published amd64 image has been pulled anonymously and run end to end,
-reporting the same `model_version` as the local checkpoint. No latency is quoted
-from that run: it was under x86 emulation, which measures the emulator.
+Cold start from `docker run` to `/readyz` is **0.54 s**.
 
 ---
 
@@ -411,30 +448,30 @@ from that run: it was under x86 emulation, which measures the emulator.
 threatsim/
   data.py           NAB loading, labelling, grouped splits
   features.py       10 statistical window features
-  models.py         Transformer + batched MC Dropout
+  models.py         Transformer + batched MC Dropout (training and evaluation)
   reference.py      Drift profile and PSI
   scaling.py        FeatureScaler, kept free of heavy imports
   utils.py          Seeding, checkpoint IO, plots
-  serving/          FastAPI app, inference, metrics, schemas
+  serving/
+    forward.py      The forward pass in numpy: what the container runs
+    inference.py    Weight loading and the preprocessing contract
+    app.py, metrics.py, schemas.py
 scripts/
   fetch_data.py         Download only the NAB series used
   train.py / evaluate.py
+  export_weights.py     best_model.pt -> model.npz for the container
   build_reference.py    Drift reference from the training split
   loadtest.py           Latency and throughput
-  bench_batching.py     MC Dropout batching speedup and equivalence
+  bench_batching.py     Batching speedup and the torch/numpy comparison
   make_examples.py      Regenerates examples/ from the checkpoint
   lock_requirements.sh  Regenerates the dependency locks
 examples/           Ready-to-POST request payloads
 docs/               VHS tapes and the recordings they render
-tests/              75 tests
+tests/              84 tests, 9 of them backend parity
 .github/            CI (lint, tests, image smoke test), release to GHCR, Dependabot
 pyproject.toml      Packaging, ruff and pytest config
 requirements.lock   Fully-pinned graph for CI; requirements-runtime.lock for the image
 ```
-
-torch is deliberately absent from both lock files — its PyPI metadata drags in
-nineteen CUDA packages on Linux. It's installed separately from the CPU wheel
-index, and `scripts/lock_requirements.sh` fails loudly if CUDA ever appears.
 
 ## Reproducing everything
 
@@ -442,13 +479,14 @@ index, and `scripts/lock_requirements.sh` fails loudly if CUDA ever appears.
 python scripts/fetch_data.py
 python scripts/train.py                  # byte-identical checkpoint
 python scripts/evaluate.py               # quality table, "what doesn't work"
+python scripts/export_weights.py
 python scripts/build_reference.py
-python scripts/bench_batching.py
+python scripts/bench_batching.py         # batching and backend comparison
 
 uvicorn threatsim.serving.app:app --port 8077 &
 python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --sweep-mc 2,10,30,100
 
-pytest -q                                # 75 tests
+pytest -q                                # 84 tests
 ruff check . && ruff format --check .    # the CI lint gate
 ```
 
@@ -463,6 +501,8 @@ elsewhere is comparable rather than merely different.
 - One model. No A/B path, no shadow scoring, no automatic retraining when drift
   fires — `/drift` reports, a human decides.
 - Drift lives in an in-memory buffer, so it resets when the container restarts.
+- Two forward-pass implementations. A change to the architecture has to be made
+  twice, and the parity test is the only thing that catches a mismatch.
 
 ## Licence
 

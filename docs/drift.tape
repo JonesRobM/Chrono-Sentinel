@@ -21,7 +21,7 @@ Set WindowBar Colorful
 Set WindowBarSize 40
 
 Hide
-Type "clear && docker rm -f chrono >/dev/null 2>&1; docker run -d --rm --name chrono --platform linux/amd64 -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.2.2 >/dev/null; until curl -sf localhost:7860/readyz >/dev/null; do sleep 1; done; clear"
+Type "clear && docker rm -f chrono >/dev/null 2>&1; docker run -d --rm --name chrono --platform linux/amd64 -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.3.0 >/dev/null; until curl -sf localhost:7860/readyz >/dev/null; do sleep 1; done; clear"
 Enter
 Sleep 15s
 Show

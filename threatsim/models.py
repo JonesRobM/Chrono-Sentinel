@@ -201,19 +201,34 @@ class TimeSeriesTransformer(nn.Module):
         """
         Enables dropout for Monte Carlo Dropout inference.
 
-        Call this before running multiple forward passes for uncertainty
-        estimation. Note: model.train() achieves the same effect but also
-        affects batch normalisation (not used here).
+        Flipping the nn.Dropout modules is not sufficient.
+        nn.TransformerEncoderLayer takes a fused inference path while it is in
+        eval mode, and that kernel never consults its dropout submodules. An
+        earlier version of this method set only nn.Dropout to train mode, so
+        eight of the twelve dropout sites were switched on and then silently
+        ignored: the encoder contributed exactly zero variance and the
+        uncertainty came only from the positional encoding, the feature branch
+        and the classifier head. The encoder layers and their attention modules
+        therefore have to be put in train mode as well.
+
+        (Measured effect on this model: mean sigma 0.10714 -> 0.10776. Small,
+        because mean-pooling over 50 timesteps averages most of the encoder
+        noise away, but the sampling was not doing what it claimed.)
         """
-        for module in self.modules():
-            if isinstance(module, nn.Dropout):
-                module.train()
+        self._set_stochastic_modules(train=True)
 
     def disable_mc_dropout(self) -> None:
         """Disables dropout for standard deterministic inference."""
+        self._set_stochastic_modules(train=False)
+
+    def _set_stochastic_modules(self, train: bool) -> None:
+        """Puts every module that samples dropout into train or eval mode."""
         for module in self.modules():
-            if isinstance(module, nn.Dropout):
-                module.eval()
+            if isinstance(
+                module,
+                (nn.Dropout, nn.TransformerEncoderLayer, nn.MultiheadAttention),
+            ):
+                module.train(train)
 
 
 def mc_dropout_predict(

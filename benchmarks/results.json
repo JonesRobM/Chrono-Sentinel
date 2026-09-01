@@ -1,7 +1,7 @@
 {
-  "label": "local-macos",
+  "label": "local-numpy",
   "target": "http://127.0.0.1:8077",
-  "recorded_at": "2026-08-31T22:37:24+00:00",
+  "recorded_at": "2026-09-01T09:05:53+00:00",
   "conditions": {
     "measured_requests": 1000,
     "warmup_requests_discarded": 100,
@@ -15,81 +15,81 @@
     "mc_samples=2": {
       "successful_requests": 1000,
       "failures": {},
-      "wall_seconds": 1.075,
-      "throughput_rps": 930.5,
+      "wall_seconds": 1.169,
+      "throughput_rps": 855.3,
       "concurrency": 8,
       "client_ms": {
-        "p50": 7.93,
-        "p90": 12.95,
-        "p95": 14.8,
-        "p99": 20.81,
-        "max": 39.46,
-        "mean": 8.57
+        "p50": 9.35,
+        "p90": 10.86,
+        "p95": 11.75,
+        "p99": 15.13,
+        "max": 17.34,
+        "mean": 9.33
       },
       "server_inference_ms": {
-        "p50": 2.76,
-        "p99": 6.43,
-        "mean": 2.69
+        "p50": 6.96,
+        "p99": 9.09,
+        "mean": 6.67
       }
     },
     "mc_samples=10": {
       "successful_requests": 1000,
       "failures": {},
-      "wall_seconds": 1.095,
-      "throughput_rps": 912.9,
+      "wall_seconds": 1.449,
+      "throughput_rps": 689.9,
       "concurrency": 8,
       "client_ms": {
-        "p50": 8.53,
-        "p90": 11.81,
-        "p95": 13.27,
-        "p99": 16.54,
-        "max": 22.31,
-        "mean": 8.73
+        "p50": 11.32,
+        "p90": 13.21,
+        "p95": 14.39,
+        "p99": 19.6,
+        "max": 27.36,
+        "mean": 11.56
       },
       "server_inference_ms": {
-        "p50": 3.8,
-        "p99": 7.06,
-        "mean": 3.67
+        "p50": 8.84,
+        "p99": 15.17,
+        "mean": 9.0
       }
     },
     "mc_samples=30": {
       "successful_requests": 1000,
       "failures": {},
-      "wall_seconds": 1.399,
-      "throughput_rps": 714.7,
+      "wall_seconds": 2.787,
+      "throughput_rps": 358.8,
       "concurrency": 8,
       "client_ms": {
-        "p50": 10.4,
-        "p90": 14.89,
-        "p95": 16.73,
-        "p99": 22.86,
-        "max": 38.38,
-        "mean": 11.16
+        "p50": 22.22,
+        "p90": 24.1,
+        "p95": 24.66,
+        "p99": 26.05,
+        "max": 29.39,
+        "mean": 22.25
       },
       "server_inference_ms": {
-        "p50": 4.98,
-        "p99": 9.83,
-        "mean": 5.32
+        "p50": 19.55,
+        "p99": 23.04,
+        "mean": 19.55
       }
     },
     "mc_samples=100": {
       "successful_requests": 1000,
       "failures": {},
-      "wall_seconds": 2.128,
-      "throughput_rps": 470.0,
+      "wall_seconds": 8.205,
+      "throughput_rps": 121.9,
       "concurrency": 8,
       "client_ms": {
-        "p50": 16.86,
-        "p90": 19.32,
-        "p95": 20.27,
-        "p99": 22.42,
-        "max": 27.11,
-        "mean": 16.97
+        "p50": 65.49,
+        "p90": 67.15,
+        "p95": 67.89,
+        "p99": 70.83,
+        "max": 77.09,
+        "mean": 65.62
       },
       "server_inference_ms": {
-        "p50": 12.17,
-        "p99": 15.51,
-        "mean": 12.23
+        "p50": 61.12,
+        "p99": 64.67,
+        "mean": 61.12
       }
     }
   }

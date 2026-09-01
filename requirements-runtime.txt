@@ -6,6 +6,8 @@
 # of them. Installing the full research set added ~300 MB of site-packages to
 # the image for code that never executes in it.
 #
-# torch is installed separately in the Dockerfile from the CPU wheel index,
-# so it is not listed here.
+# torch is absent on purpose. The service runs the forward pass in numpy
+# (threatsim/serving/forward.py) from weights exported by
+# scripts/export_weights.py, which keeps 635 MB of framework out of the image.
+# tests/test_forward_parity.py holds that implementation to torch's numbers.
 numpy==2.5.2

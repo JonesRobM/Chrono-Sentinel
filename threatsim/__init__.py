@@ -23,7 +23,7 @@ here, so this package stays importable without FastAPI installed.
 import importlib
 from typing import Any
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 # Public name -> submodule that defines it.
 _EXPORTS = {

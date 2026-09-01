@@ -71,13 +71,14 @@ jobs:
           pip install -e . --no-deps
 
       - name: Verify committed artefacts are present
-        # Both are required by the test suite and are COPYed into the image.
+        # best_model.pt drives training and the parity test; model.npz is what
+        # the container actually serves; reference.json is the drift baseline.
         # If either is missing from the checkout the suite does not fail, it
         # skips ~26 tests and reports green until the skip guard below trips,
         # which reads as a mysterious CI error rather than a missing file.
         run: |
           missing=0
-          for f in outputs/best_model.pt outputs/reference.json; do
+          for f in outputs/best_model.pt outputs/model.npz outputs/reference.json; do
             if [ -f "$f" ]; then
               echo "ok      $f  ($(wc -c < "$f") bytes)"
             else

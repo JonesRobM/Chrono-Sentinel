@@ -18,5 +18,5 @@ __pycache__/
 # outputs/ holds the plots and metrics as well as the two served artefacts.
 # The Dockerfile copies those two explicitly, so exclude the rest.
 outputs/*
-!outputs/best_model.pt
+!outputs/model.npz
 !outputs/reference.json

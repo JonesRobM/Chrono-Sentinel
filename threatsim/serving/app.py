@@ -13,11 +13,11 @@ long enough that a combined probe would report a crash loop during a slow
 cold start, which on a free-tier host is exactly when it happens.
 
 Configuration is by environment variable so the container needs no arguments:
-    CHRONO_MODEL_PATH      checkpoint to serve      (default outputs/best_model.pt)
+    CHRONO_MODEL_PATH      exported weights         (default outputs/model.npz)
     CHRONO_REFERENCE_PATH  drift reference profile  (default outputs/reference.json)
     CHRONO_MC_SAMPLES      default MC passes        (default 30)
-    CHRONO_TORCH_THREADS   torch intra-op threads   (default 1)
     CHRONO_DRIFT_BUFFER    rolling drift window     (default 2000)
+    CHRONO_WORKERS         uvicorn worker count     (default 1)
 """
 
 import logging
@@ -44,7 +44,7 @@ from threatsim.serving.schemas import (
 logger = logging.getLogger("chrono_sentinel")
 
 SERVICE_NAME = "chrono-sentinel"
-SERVICE_VERSION = "0.2.2"
+SERVICE_VERSION = "0.3.0"
 
 
 def _env_path(name: str, default: str) -> Path:
@@ -87,14 +87,13 @@ def load_resources() -> None:
     with the reason recorded, rather than crashing the process: a readiness
     probe reporting a clear cause is more useful than a restart loop.
     """
-    model_path = _env_path("CHRONO_MODEL_PATH", "outputs/best_model.pt")
+    model_path = _env_path("CHRONO_MODEL_PATH", "outputs/model.npz")
     reference_path = _env_path("CHRONO_REFERENCE_PATH", "outputs/reference.json")
 
     try:
-        state.scorer = AnomalyScorer.from_checkpoint(
+        state.scorer = AnomalyScorer.from_weights(
             model_path,
             default_mc_samples=_env_int("CHRONO_MC_SAMPLES", 30),
-            num_threads=_env_int("CHRONO_TORCH_THREADS", 1),
         )
         state.metrics.set_model_info(state.scorer.info())
         logger.info(

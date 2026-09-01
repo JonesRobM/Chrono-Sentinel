@@ -1,36 +1,36 @@
 {
   "model": {
     "val": {
-      "threshold": 0.6600195169448853,
-      "roc_auc": 0.5988106875203649,
-      "average_precision": 0.16040146467764232,
-      "precision": 0.4375,
-      "recall": 0.1111111111111111,
-      "f1": 0.17721518987341772,
+      "threshold": 0.924781084060669,
+      "roc_auc": 0.572918121305218,
+      "average_precision": 0.15554417171787477,
+      "precision": 1.0,
+      "recall": 0.09523809523809523,
+      "f1": 0.17391304347826086,
       "positive_rate": 0.04414856341976174,
       "n": 1427
     },
     "test": {
-      "threshold": 0.6600195169448853,
-      "roc_auc": 0.7726883761975116,
-      "average_precision": 0.25417522282139027,
-      "precision": 0.10132890365448505,
-      "recall": 0.6039603960396039,
-      "f1": 0.17354196301564723,
+      "threshold": 0.924781084060669,
+      "roc_auc": 0.7810483951838804,
+      "average_precision": 0.30427337021936596,
+      "precision": 0.9166666666666666,
+      "recall": 0.10891089108910891,
+      "f1": 0.19469026548672566,
       "positive_rate": 0.03297420829252367,
       "n": 3063
     }
   },
   "calibration": {
-    "expected_calibration_error_test": 0.46323635570955474
+    "expected_calibration_error_test": 0.4748093602492301
   },
   "uncertainty": {
-    "mean_uncertainty": 0.10260796546936035,
-    "uncertainty_std_across_inputs": 0.0327024906873703,
-    "mean_uncertainty_correct": 0.10244718939065933,
-    "mean_uncertainty_incorrect": 0.10329484194517136,
-    "error_detection_auc": 0.5386098324459343,
-    "uncertainty_error_correlation": 0.010161998473968705
+    "mean_uncertainty": 0.09991245716810226,
+    "uncertainty_std_across_inputs": 0.03023189678788185,
+    "mean_uncertainty_correct": 0.10011172294616699,
+    "mean_uncertainty_incorrect": 0.09340445697307587,
+    "error_detection_auc": 0.4176859479685859,
+    "uncertainty_error_correlation": -0.03766852890542021
   },
   "mc_vs_deterministic": {
     "val": {
@@ -39,8 +39,8 @@
         "average_precision": 0.33542917011273166
       },
       "mc_dropout_30": {
-        "roc_auc": 0.5546013126658288,
-        "average_precision": 0.1599513156578705
+        "roc_auc": 0.5870106595913047,
+        "average_precision": 0.16423256405142073
       }
     },
     "test": {
@@ -49,8 +49,8 @@
         "average_precision": 0.24635301960730843
       },
       "mc_dropout_30": {
-        "roc_auc": 0.7758505425154265,
-        "average_precision": 0.27500134847650304
+        "roc_auc": 0.7830707108523142,
+        "average_precision": 0.2908231764516345
       }
     }
   },

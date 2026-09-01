@@ -24,7 +24,7 @@ Set WindowBarSize 40
 
 # Setup: keep the recording focused on the API, not on a one-time image pull.
 Hide
-Type "clear && docker rm -f chrono >/dev/null 2>&1; docker pull -q --platform linux/amd64 ghcr.io/jonesrobm/chrono-sentinel:0.2.2 >/dev/null 2>&1; clear"
+Type "clear && docker rm -f chrono >/dev/null 2>&1; docker pull -q --platform linux/amd64 ghcr.io/jonesrobm/chrono-sentinel:0.3.0 >/dev/null 2>&1; clear"
 Enter
 Sleep 5s
 Show
@@ -34,7 +34,7 @@ Enter
 Sleep 1s
 Type "docker run -d --rm --name chrono --platform linux/amd64 -p 7860:7860 \"
 Enter
-Type "  ghcr.io/jonesrobm/chrono-sentinel:0.2.2"
+Type "  ghcr.io/jonesrobm/chrono-sentinel:0.3.0"
 Enter
 Sleep 3s
 
