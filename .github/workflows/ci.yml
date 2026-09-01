@@ -134,7 +134,11 @@ jobs:
           node-version: "22"
 
       - name: Parity tests against the Python fixture
-        run: node --test tests/web/
+        # Glob the files rather than passing the directory. Node only learned
+        # to treat a directory as a test target in v24; on v22 `node --test
+        # tests/web/` tries to *run* that path as a module and fails with
+        # MODULE_NOT_FOUND.
+        run: node --test tests/web/*.test.mjs
 
   docker:
     # Proves the image still builds on every change, so a broken Dockerfile is
