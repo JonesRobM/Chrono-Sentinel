@@ -10,7 +10,7 @@ Output docs/loadtest.gif
 Set Shell bash
 Set FontSize 14
 Set Width 1280
-Set Height 400
+Set Height 420
 Set Padding 20
 Set Framerate 20
 Set TypingSpeed 35ms
@@ -29,9 +29,9 @@ Enter
 Sleep 1s
 Type ".venv/bin/python scripts/loadtest.py --requests 1000 --concurrency 8 \"
 Enter
-Type "  --warmup 100 --sweep-mc 2,10,30,100"
+Type "  --warmup 100 --repeats 3 --sweep-mc 2,10,30,100"
 Enter
-Sleep 20s
+Sleep 75s
 
 Type "# Sub-linear: the 30 passes are one batched forward pass, not 30."
 Enter

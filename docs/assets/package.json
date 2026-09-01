@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "//": "Makes the ES module resolution explicit for Node. Node 22 can infer it from the syntax, but that is version-dependent and CI should not rely on it. Browsers never fetch this file; the page loads the modules via <script type=\"module\">."
+}

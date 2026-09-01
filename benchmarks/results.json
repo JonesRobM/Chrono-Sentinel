@@ -1,8 +1,9 @@
 {
   "label": "local-numpy",
   "target": "http://127.0.0.1:8077",
-  "recorded_at": "2026-09-01T09:05:53+00:00",
+  "recorded_at": "2026-09-01T11:30:44+00:00",
   "conditions": {
+    "repeats_per_phase": 5,
     "measured_requests": 1000,
     "warmup_requests_discarded": 100,
     "concurrency": 8,
@@ -13,83 +14,203 @@
   },
   "phases": {
     "mc_samples=2": {
-      "successful_requests": 1000,
+      "runs": 5,
+      "successful_requests": 5000,
       "failures": {},
-      "wall_seconds": 1.169,
-      "throughput_rps": 855.3,
       "concurrency": 8,
+      "throughput_rps": {
+        "median": 845.1,
+        "min": 842.0,
+        "max": 852.4
+      },
       "client_ms": {
-        "p50": 9.35,
-        "p90": 10.86,
-        "p95": 11.75,
-        "p99": 15.13,
-        "max": 17.34,
-        "mean": 9.33
+        "p50": {
+          "median": 9.49,
+          "min": 9.43,
+          "max": 9.54
+        },
+        "p90": {
+          "median": 10.95,
+          "min": 10.8,
+          "max": 10.99
+        },
+        "p95": {
+          "median": 11.55,
+          "min": 11.44,
+          "max": 11.7
+        },
+        "p99": {
+          "median": 14.18,
+          "min": 13.14,
+          "max": 15.73
+        },
+        "max": {
+          "median": 18.74,
+          "min": 18.52,
+          "max": 20.41
+        }
       },
       "server_inference_ms": {
-        "p50": 6.96,
-        "p99": 9.09,
-        "mean": 6.67
+        "p50": {
+          "median": 7.09,
+          "min": 6.96,
+          "max": 7.13
+        },
+        "p99": {
+          "median": 9.11,
+          "min": 8.96,
+          "max": 9.61
+        }
       }
     },
     "mc_samples=10": {
-      "successful_requests": 1000,
+      "runs": 5,
+      "successful_requests": 5000,
       "failures": {},
-      "wall_seconds": 1.449,
-      "throughput_rps": 689.9,
       "concurrency": 8,
+      "throughput_rps": {
+        "median": 700.1,
+        "min": 696.5,
+        "max": 706.9
+      },
       "client_ms": {
-        "p50": 11.32,
-        "p90": 13.21,
-        "p95": 14.39,
-        "p99": 19.6,
-        "max": 27.36,
-        "mean": 11.56
+        "p50": {
+          "median": 11.35,
+          "min": 11.28,
+          "max": 11.37
+        },
+        "p90": {
+          "median": 12.99,
+          "min": 12.67,
+          "max": 13.14
+        },
+        "p95": {
+          "median": 13.84,
+          "min": 13.24,
+          "max": 13.92
+        },
+        "p99": {
+          "median": 16.42,
+          "min": 14.78,
+          "max": 17.99
+        },
+        "max": {
+          "median": 21.65,
+          "min": 17.92,
+          "max": 27.34
+        }
       },
       "server_inference_ms": {
-        "p50": 8.84,
-        "p99": 15.17,
-        "mean": 9.0
+        "p50": {
+          "median": 8.88,
+          "min": 8.81,
+          "max": 9.01
+        },
+        "p99": {
+          "median": 12.62,
+          "min": 11.31,
+          "max": 14.86
+        }
       }
     },
     "mc_samples=30": {
-      "successful_requests": 1000,
+      "runs": 5,
+      "successful_requests": 5000,
       "failures": {},
-      "wall_seconds": 2.787,
-      "throughput_rps": 358.8,
       "concurrency": 8,
+      "throughput_rps": {
+        "median": 358.7,
+        "min": 353.2,
+        "max": 359.9
+      },
       "client_ms": {
-        "p50": 22.22,
-        "p90": 24.1,
-        "p95": 24.66,
-        "p99": 26.05,
-        "max": 29.39,
-        "mean": 22.25
+        "p50": {
+          "median": 22.26,
+          "min": 22.09,
+          "max": 22.62
+        },
+        "p90": {
+          "median": 23.95,
+          "min": 23.64,
+          "max": 24.68
+        },
+        "p95": {
+          "median": 24.78,
+          "min": 24.38,
+          "max": 25.56
+        },
+        "p99": {
+          "median": 28.68,
+          "min": 26.76,
+          "max": 29.51
+        },
+        "max": {
+          "median": 31.26,
+          "min": 29.69,
+          "max": 32.51
+        }
       },
       "server_inference_ms": {
-        "p50": 19.55,
-        "p99": 23.04,
-        "mean": 19.55
+        "p50": {
+          "median": 19.65,
+          "min": 19.53,
+          "max": 19.7
+        },
+        "p99": {
+          "median": 23.38,
+          "min": 23.09,
+          "max": 25.0
+        }
       }
     },
     "mc_samples=100": {
-      "successful_requests": 1000,
+      "runs": 5,
+      "successful_requests": 5000,
       "failures": {},
-      "wall_seconds": 8.205,
-      "throughput_rps": 121.9,
       "concurrency": 8,
+      "throughput_rps": {
+        "median": 121.4,
+        "min": 121.1,
+        "max": 121.6
+      },
       "client_ms": {
-        "p50": 65.49,
-        "p90": 67.15,
-        "p95": 67.89,
-        "p99": 70.83,
-        "max": 77.09,
-        "mean": 65.62
+        "p50": {
+          "median": 65.65,
+          "min": 65.62,
+          "max": 65.75
+        },
+        "p90": {
+          "median": 67.36,
+          "min": 67.17,
+          "max": 67.58
+        },
+        "p95": {
+          "median": 68.36,
+          "min": 68.18,
+          "max": 68.48
+        },
+        "p99": {
+          "median": 71.68,
+          "min": 70.89,
+          "max": 72.61
+        },
+        "max": {
+          "median": 73.87,
+          "min": 72.56,
+          "max": 75.3
+        }
       },
       "server_inference_ms": {
-        "p50": 61.12,
-        "p99": 64.67,
-        "mean": 61.12
+        "p50": {
+          "median": 61.29,
+          "min": 61.21,
+          "max": 61.33
+        },
+        "p99": {
+          "median": 66.02,
+          "min": 65.46,
+          "max": 66.74
+        }
       }
     }
   }

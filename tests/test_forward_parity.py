@@ -230,3 +230,44 @@ def test_exported_config_round_trips(models):
     assert numpy_model.num_layers == config["num_layers"]
     assert numpy_model.dropout_p == pytest.approx(config["dropout"])
     assert len(numpy_model.model_version) == 12
+
+
+@needs_artefacts
+class TestWebBundleIsCurrent:
+    """
+    The browser bundle is a third copy of the weights and can go stale.
+
+    Retraining regenerates best_model.pt and model.npz, but docs/assets/ is
+    only refreshed by scripts/export_web_model.py. Without this check the
+    hosted demo would keep serving the previous model with no visible sign.
+    """
+
+    WEB_META = Path("docs/assets/model.json")
+    WEB_BIN = Path("docs/assets/model.bin")
+
+    def test_bundle_matches_the_checkpoint(self):
+        if not self.WEB_META.exists():
+            pytest.skip("no web bundle; run scripts/export_web_model.py")
+
+        import hashlib
+        import json
+
+        metadata = json.loads(self.WEB_META.read_text())
+        expected = hashlib.sha256(CHECKPOINT.read_bytes()).hexdigest()[:12]
+        assert metadata["modelVersion"] == expected, (
+            "docs/assets/model.json was exported from a different checkpoint. "
+            "Run: python scripts/export_web_model.py"
+        )
+
+    def test_binary_size_matches_the_manifest(self):
+        if not self.WEB_BIN.exists():
+            pytest.skip("no web bundle; run scripts/export_web_model.py")
+
+        import json
+
+        metadata = json.loads(self.WEB_META.read_text())
+        expected_bytes = metadata["totalFloats"] * 4
+        assert self.WEB_BIN.stat().st_size == expected_bytes, (
+            f"model.bin is {self.WEB_BIN.stat().st_size} bytes but the manifest "
+            f"describes {expected_bytes}. Re-run scripts/export_web_model.py"
+        )

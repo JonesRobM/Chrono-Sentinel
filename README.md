@@ -19,7 +19,11 @@ The container carries **no deep-learning framework**. Training uses PyTorch;
 the service runs the forward pass in numpy from a 282 KB weights file, which
 takes the image from 1.35 GB to 355 MB.
 
-Run it without cloning anything:
+**[Try it in your browser](https://jonesrobm.github.io/Chrono-Sentinel/)** — draw a
+window and watch the detector rescore it. The model runs client-side; nothing
+is uploaded.
+
+Or run the service locally, without cloning anything:
 
 ```bash
 docker run --rm -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.3.0
@@ -40,7 +44,7 @@ docker run --rm -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.3.0
 | **Serving** | FastAPI, 6.7 ms p50 single-client, ~360 req/s at concurrency 8 |
 | **Image** | 355 MB, no framework, non-root, 0.54 s to ready |
 | **Observability** | Prometheus latency, throughput, score distribution, PSI drift |
-| **Pipeline** | Locked dependencies, lint + tests + container smoke test in CI, GHCR on tag |
+| **Pipeline** | Locked dependencies, lint + Python and JS tests + container smoke test in CI, GHCR on tag |
 
 Every number here came out of a script in this repo. Anything not yet measured
 says so. There's a [What doesn't work](#what-doesnt-work) section and it isn't
@@ -72,32 +76,44 @@ uvicorn threatsim.serving.app:app --port 8077
 
 Measured with `scripts/loadtest.py` on an Apple M5 Pro (15 cores), macOS 26.6.2,
 one uvicorn worker, window size 50, 1000 requests after 100 discarded warm-ups.
-Run-to-run variance is around 10%, so read these to one significant figure.
+Each figure is the **median of five consecutive runs** (`--repeats 5`), with the
+observed p50 range beside it.
+
+The repeats are not decoration. A single run is not representative on a laptop:
+this machine measured 9.0 ms cold, 11.9 ms after a few minutes of sustained
+benchmarking, and 9.4 ms again after two minutes idle. That is thermal
+throttling, not noise, and it is larger than any difference this table is
+trying to show. A competing CPU-bound job shifted everything by a further
+40-70%.
 
 ![Load test](docs/loadtest.gif)
 
 What the Monte Carlo sample count costs, at concurrency 8:
 
-| `mc_samples` | p50 | p99 | throughput |
-| ---: | ---: | ---: | ---: |
-| 2 | 9.4 ms | 15.1 ms | 855 req/s |
-| 10 | 11.3 ms | 19.6 ms | 690 req/s |
-| 30 *(default)* | 22.2 ms | 26.1 ms | 359 req/s |
-| 100 | 65.5 ms | 70.8 ms | 122 req/s |
+| `mc_samples` | p50 | p50 range | p99 | throughput |
+| ---: | ---: | ---: | ---: | ---: |
+| 2 | 9.5 ms | 9.4–9.5 | 14.2 ms | 845 req/s |
+| 10 | 11.4 ms | 11.3–11.4 | 16.4 ms | 700 req/s |
+| 30 *(default)* | 22.3 ms | 22.1–22.6 | 28.7 ms | 359 req/s |
+| 100 | 65.7 ms | 65.6–65.8 | 71.7 ms | 121 req/s |
 
-Concurrency, at `mc_samples=30`, 600 requests after 60 warm-ups:
+Concurrency, at `mc_samples=30`, 600 requests after 60 warm-ups, median of three:
 
 | concurrency | p50 | p95 | p99 | throughput |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 6.7 ms | 7.2 ms | 9.0 ms | 148 req/s |
-| 4 | 13.3 ms | 14.1 ms | 16.6 ms | 299 req/s |
-| 8 | 22.2 ms | 24.7 ms | 27.9 ms | 359 req/s |
-| 16 | 44.0 ms | 51.8 ms | 56.7 ms | 358 req/s |
+| 1 | 6.8 ms | 7.1 ms | 7.7 ms | 146 req/s |
+| 2 | 8.2 ms | 8.6 ms | 10.1 ms | 242 req/s |
+| 4 | 13.4 ms | 14.2 ms | 16.8 ms | 296 req/s |
+| 8 | 22.2 ms | 24.8 ms | 29.1 ms | 359 req/s |
+| 16 | 43.7 ms | 50.2 ms | 54.3 ms | 364 req/s |
+| 32 | 49.2 ms | 329.1 ms | 561.7 ms | 312 req/s |
 
-Throughput plateaus at about 360 req/s. numpy's many small operations hold the
-GIL more than torch's kernels do, so one worker saturates early. Four workers
-measured 475 req/s at ~58 MB resident each, which is affordable now the image
-carries no framework — set `CHRONO_WORKERS`. On a 2-vCPU host leave it at 1.
+Throughput plateaus at about 360 req/s from concurrency 8. numpy's many small
+operations hold the GIL more than torch's kernels do, so one worker saturates
+early, and past that the tail goes first: at concurrency 32 the median is 49 ms
+while the 99th percentile is 562 ms. Four workers measured 607 req/s at ~58 MB
+resident each, which is affordable now the image carries no framework — set
+`CHRONO_WORKERS`. On a 2-vCPU host leave it at 1.
 
 There's no hosted-endpoint row: this project ships a container, not a URL (see
 [Deployment](#deployment)). `scripts/loadtest.py --url <host>` gives you the
@@ -113,7 +129,7 @@ discarded, HTTP excluded:
 | forward pass, `mc_samples=30` | 4.9 ms | 5.7 ms |
 | image | 1.35 GB | **355 MB** |
 | cold start to `/readyz` | 1.14 s | **0.54 s** |
-| peak throughput | ~715 req/s | ~360 req/s (475 with 4 workers) |
+| peak throughput | ~715 req/s | ~360 req/s (607 with 4 workers) |
 
 Per-request cost is close to a wash. Throughput is where numpy loses, and image
 size and cold start are where it wins. For a project whose deployment target is
@@ -130,9 +146,9 @@ rather than looping, is worth a further 1.6-1.8x:
 
 | `mc_samples` | sequential | batched | speedup |
 | ---: | ---: | ---: | ---: |
-| 10 | 3.36 ms | 2.04 ms | 1.6x |
-| 30 | 10.07 ms | 5.73 ms | 1.8x |
-| 100 | 33.28 ms | 18.93 ms | 1.8x |
+| 10 | 3.33 ms | 2.03 ms | 1.6x |
+| 30 | 9.98 ms | 5.73 ms | 1.7x |
+| 100 | 33.15 ms | 19.05 ms | 1.7x |
 
 ### Model quality
 
@@ -378,7 +394,9 @@ train.py (PyTorch) ──► best_model.pt ──► export_weights.py ──►
 ```
 
 Training keeps PyTorch, which is where autograd and DataLoaders matter. The
-container runs `threatsim/serving/forward.py`, about 150 lines of numpy.
+container runs `threatsim/serving/forward.py`, about 150 lines of numpy, and
+the browser demo runs `docs/assets/model.js`, the same maths again in
+JavaScript against a 297 KB weights file.
 
 Reproducing `nn.TransformerEncoderLayer` exactly needs three details that are
 easy to get wrong: `in_proj_weight` packs Q, K and V into one (3d, d) matrix;
@@ -386,11 +404,22 @@ easy to get wrong: `in_proj_weight` packs Q, K and V into one (3d, d) matrix;
 twelve dropout sites, including one on the attention weights inside the
 attention block.
 
-Two implementations of one function is a real hazard — they could diverge and
-the service would return confident wrong answers.
-`tests/test_forward_parity.py` is the contract: deterministic logits agree to
-2.4e-07, and over 150 seeded repeats the Monte Carlo mean agrees within 0.002
-and sigma within 0.3%.
+Three implementations of one function is a real hazard — they could diverge and
+the service would return confident wrong answers, so each pair has a contract.
+
+`tests/test_forward_parity.py` holds numpy to torch: deterministic logits agree
+to 2.4e-07, and over 150 seeded repeats the Monte Carlo mean agrees within
+0.002 and sigma within 0.3%.
+
+`tests/web/parity.test.mjs` holds the JavaScript to Python, against golden
+vectors generated by `scripts/export_web_model.py`. Each fixture case carries
+every intermediate stage — z-scored sequence, raw features, scaled features,
+logit — so a failure names the stage that diverged.
+
+Both suites check the Monte Carlo *spread*, not just the mean, and that is the
+part that matters. With dropout off every dropout site is the identity, so a
+deterministic check cannot notice a missing one. That is exactly how the fused
+fast path hid in the torch backend.
 
 ---
 
@@ -465,9 +494,13 @@ scripts/
   bench_batching.py     Batching speedup and the torch/numpy comparison
   make_examples.py      Regenerates examples/ from the checkpoint
   lock_requirements.sh  Regenerates the dependency locks
+  export_web_model.py   model.npz -> browser bundle + golden vectors
 examples/           Ready-to-POST request payloads
-docs/               VHS tapes and the recordings they render
-tests/              84 tests, 9 of them backend parity
+docs/               The GitHub Pages demo, plus VHS tapes and recordings
+  index.html            Draw a window, watch it rescore
+  assets/model.js       The forward pass again, in JavaScript
+  assets/model.bin      297 KB of weights, fetched once
+tests/              86 Python tests + 13 JavaScript parity tests
 .github/            CI (lint, tests, image smoke test), release to GHCR, Dependabot
 pyproject.toml      Packaging, ruff and pytest config
 requirements.lock   Fully-pinned graph for CI; requirements-runtime.lock for the image
@@ -480,13 +513,15 @@ python scripts/fetch_data.py
 python scripts/train.py                  # byte-identical checkpoint
 python scripts/evaluate.py               # quality table, "what doesn't work"
 python scripts/export_weights.py
+python scripts/export_web_model.py
 python scripts/build_reference.py
 python scripts/bench_batching.py         # batching and backend comparison
 
 uvicorn threatsim.serving.app:app --port 8077 &
-python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --sweep-mc 2,10,30,100
+python scripts/loadtest.py --requests 1000 --concurrency 8 --warmup 100 --repeats 5 --sweep-mc 2,10,30,100
 
-pytest -q                                # 84 tests
+pytest -q                                # 86 tests
+node --test tests/web/                   # 13 JS parity tests
 ruff check . && ruff format --check .    # the CI lint gate
 ```
 
@@ -501,8 +536,12 @@ elsewhere is comparable rather than merely different.
 - One model. No A/B path, no shadow scoring, no automatic retraining when drift
   fires — `/drift` reports, a human decides.
 - Drift lives in an in-memory buffer, so it resets when the container restarts.
-- Two forward-pass implementations. A change to the architecture has to be made
-  twice, and the parity test is the only thing that catches a mismatch.
+- Three forward-pass implementations. A change to the architecture has to be
+  made three times, and the parity suites are the only thing that catches a
+  mismatch. That is a deliberate trade for a 355 MB image and a free demo, but
+  it is a maintenance cost, not a free win.
+- The browser demo scores single windows only. It has no `/metrics` and no
+  drift, because drift is a property of a service watching a traffic stream.
 
 ## Licence
 

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chrono-Sentinel — anomaly detection in your browser</title>
+<meta name="description" content="A transformer anomaly detector with Monte Carlo Dropout uncertainty, running client-side in 297 KB of weights.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📈</text></svg>">
+</head>
+<body>
+<main>
+  <h1>Chrono-Sentinel</h1>
+  <p class="sub">
+    A transformer anomaly detector with Monte Carlo Dropout uncertainty.
+    <a href="https://github.com/JonesRobM/Chrono-Sentinel">Source and measured results</a>.
+  </p>
+  <p class="badges">
+    Runs entirely in your browser — 297&nbsp;KB of weights, no server, no upload.
+    Model <code id="version">loading…</code>.
+  </p>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Draw a window</h2>
+    <canvas id="chart" width="880" height="260"></canvas>
+    <p class="hint">
+      Click and drag on the chart to reshape the signal. The detector rescores as you draw.
+    </p>
+    <div class="row" style="margin-top:.75rem">
+      <button data-preset="flat">Flat</button>
+      <button data-preset="noisy">Noisy</button>
+      <button data-preset="ramp">Ramp</button>
+      <button data-preset="step">Step change</button>
+      <button data-preset="spike">Spike</button>
+      <button data-preset="sawtooth">Sawtooth</button>
+    </div>
+    <div class="row" style="margin-top:.9rem">
+      <label class="slider">
+        MC samples
+        <input id="samples" type="range" min="2" max="200" step="1" value="30">
+        <output id="samplesOut">30</output>
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Anomaly score</h2>
+    <div class="verdict">
+      <span class="score" id="score">—</span>
+      <span class="label" id="label"></span>
+      <span class="interval" id="interval"></span>
+    </div>
+    <div class="meter" id="meter">
+      <div class="band" id="band"></div>
+      <div class="threshold" id="threshold" title="F1-optimal threshold, 0.925"></div>
+      <div class="mark" id="mark"></div>
+    </div>
+    <div class="scale"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+    <p class="hint">
+      The shaded band is ±2 standard deviations across the Monte Carlo passes.
+      The yellow line is the threshold chosen on validation (0.925), which is a
+      high-precision operating point: precision 0.92, recall 0.11.
+    </p>
+    <p class="status" id="status">Loading model…</p>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">What the model is looking at</h2>
+    <p class="hint" style="margin-top:0">
+      The window is z-scored before the transformer sees it, which discards level
+      and scale. These ten statistics carry that information back in through a
+      separate branch. Values are shown after scaling by the training-split
+      statistics, so 0 means "typical of training data".
+    </p>
+    <table>
+      <thead><tr><th>Feature</th><th class="num">Raw</th><th class="num">Scaled</th></tr></thead>
+      <tbody id="features"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>
+      The same forward pass runs three ways: PyTorch for training, numpy in the
+      <a href="https://github.com/JonesRobM/Chrono-Sentinel/pkgs/container/chrono-sentinel">container</a>,
+      and this JavaScript port. All three are held to the same numbers by parity
+      tests — see
+      <a href="https://github.com/JonesRobM/Chrono-Sentinel#what-doesnt-work">What doesn't work</a>
+      for where the model falls short, including the fact that this uncertainty
+      interval does not reliably identify errors.
+    </p>
+  </footer>
+</main>
+
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>

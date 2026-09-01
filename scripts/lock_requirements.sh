@@ -24,7 +24,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PYTHON_VERSION=3.12
-WORK="$(mktemp -d)"
+
+# A fixed, relative path rather than mktemp. uv records each requirement's
+# source file in the lock's "# via -r ..." annotations, so a random temp
+# directory makes every regeneration produce a different file and turns
+# `git diff` after a re-lock into noise.
+WORK=.lock-inputs
+mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 
 # The research set minus torch.

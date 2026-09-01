@@ -56,6 +56,17 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated mc_samples values to test in sequence, e.g. 1,10,30,100",
     )
     parser.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help=(
+            "Measure each phase this many times and report the median with the "
+            "observed range. One run is not representative on a laptop: this "
+            "machine is 20-30%% faster cold than under sustained load, because "
+            "it thermally throttles after a minute or two of benchmarking."
+        ),
+    )
+    parser.add_argument(
         "--timeout", type=float, default=30.0, help="Per-request timeout"
     )
     parser.add_argument(
@@ -201,6 +212,53 @@ async def run_phase(
     }
 
 
+def combine(summaries: list[dict], concurrency: int) -> dict:
+    """
+    Reduces several runs of one phase to a median with its observed range.
+
+    A single run understates the uncertainty. This machine measured 9.0 ms p50
+    cold and 11.9 ms after a few minutes of sustained benchmarking, recovering
+    to 9.4 ms after two minutes idle -- thermal throttling, not noise. Quoting
+    one run to two decimal places would imply a precision that is not there.
+    """
+
+    def stat(path: tuple[str, ...]) -> dict:
+        values = []
+        for summary in summaries:
+            node = summary
+            for key in path:
+                node = node[key]
+            if node is not None:
+                values.append(node)
+        if not values:
+            return {"median": None, "min": None, "max": None}
+        return {
+            "median": round(statistics.median(values), 2),
+            "min": round(min(values), 2),
+            "max": round(max(values), 2),
+        }
+
+    failures: dict[str, int] = {}
+    for summary in summaries:
+        for key, count in summary["failures"].items():
+            failures[key] = failures.get(key, 0) + count
+
+    return {
+        "runs": len(summaries),
+        "successful_requests": sum(s["successful_requests"] for s in summaries),
+        "failures": failures,
+        "concurrency": concurrency,
+        "throughput_rps": stat(("throughput_rps",)),
+        "client_ms": {
+            name: stat(("client_ms", name))
+            for name in ("p50", "p90", "p95", "p99", "max")
+        },
+        "server_inference_ms": {
+            name: stat(("server_inference_ms", name)) for name in ("p50", "p99")
+        },
+    }
+
+
 def summarise(phase: dict[str, object], concurrency: int) -> dict[str, object]:
     """Reduces a phase's raw timings to the reported statistics."""
     client = phase["client_latencies_ms"]
@@ -249,25 +307,37 @@ async def main_async(args: argparse.Namespace) -> None:
         warmup_windows = make_windows(args.warmup, window_size, args.seed)
         await run_phase(args.url, warmup_windows, args.concurrency, mc, args.timeout)
 
-        windows = make_windows(args.requests, window_size, args.seed + 1)
-        phase = await run_phase(args.url, windows, args.concurrency, mc, args.timeout)
-        summary = summarise(phase, args.concurrency)
-        phases[label] = summary
+        summaries = []
+        for repeat in range(args.repeats):
+            windows = make_windows(args.requests, window_size, args.seed + 1 + repeat)
+            phase = await run_phase(
+                args.url, windows, args.concurrency, mc, args.timeout
+            )
+            summaries.append(summarise(phase, args.concurrency))
 
-        print(
-            f"  {label:<32} n={summary['successful_requests']:<5} "
-            f"p50 {summary['client_ms']['p50']:>7.2f} ms  "
-            f"p99 {summary['client_ms']['p99']:>7.2f} ms  "
-            f"{summary['throughput_rps']:>7.1f} rps"
+        combined = combine(summaries, args.concurrency)
+        phases[label] = combined
+
+        p50 = combined["client_ms"]["p50"]
+        p99 = combined["client_ms"]["p99"]
+        rps = combined["throughput_rps"]
+        spread = (
+            f"   (p50 {p50['min']:.1f}-{p50['max']:.1f})" if args.repeats > 1 else ""
         )
-        if summary["failures"]:
-            print(f"    failures: {summary['failures']}")
+        print(
+            f"  {label:<30} n={combined['successful_requests']:<6} "
+            f"p50 {p50['median']:>6.1f} ms  p99 {p99['median']:>6.1f} ms  "
+            f"{rps['median']:>6.0f} rps{spread}"
+        )
+        if combined["failures"]:
+            print(f"    failures: {combined['failures']}")
 
     results = {
         "label": args.label,
         "target": args.url,
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "conditions": {
+            "repeats_per_phase": args.repeats,
             "measured_requests": args.requests,
             "warmup_requests_discarded": args.warmup,
             "concurrency": args.concurrency,

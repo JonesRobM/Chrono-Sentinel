@@ -1,0 +1,327 @@
+{
+  "modelVersion": "711eac756d17",
+  "windowSize": 50,
+  "dModel": 64,
+  "numHeads": 4,
+  "numLayers": 2,
+  "dropout": 0.2,
+  "featureDim": 10,
+  "featureNames": [
+    "mean",
+    "std",
+    "min",
+    "max",
+    "range",
+    "slope",
+    "skewness",
+    "kurtosis",
+    "zero_crossings",
+    "autocorr_1"
+  ],
+  "scaler": {
+    "mean": [
+      12273.0048828125,
+      47580.32421875,
+      34.771209716796875,
+      252847.765625,
+      252813.078125,
+      36.22769546508789,
+      1.3628919124603271,
+      4.137939453125,
+      15.736268997192383,
+      0.1415528804063797
+    ],
+    "std": [
+      70046.96875,
+      236970.234375,
+      19.401765823364258,
+      1216629.0,
+      1216627.5,
+      2481.712158203125,
+      1.7089118957519531,
+      9.049531936645508,
+      10.13085651397705,
+      0.4308556914329529
+    ]
+  },
+  "totalFloats": 75969,
+  "tensors": [
+    {
+      "name": "classifier.1.bias",
+      "shape": [
+        48
+      ],
+      "offset": 0,
+      "length": 48
+    },
+    {
+      "name": "classifier.1.weight",
+      "shape": [
+        48,
+        96
+      ],
+      "offset": 48,
+      "length": 4608
+    },
+    {
+      "name": "classifier.4.bias",
+      "shape": [
+        1
+      ],
+      "offset": 4656,
+      "length": 1
+    },
+    {
+      "name": "classifier.4.weight",
+      "shape": [
+        1,
+        48
+      ],
+      "offset": 4657,
+      "length": 48
+    },
+    {
+      "name": "feature_encoder.0.bias",
+      "shape": [
+        32
+      ],
+      "offset": 4705,
+      "length": 32
+    },
+    {
+      "name": "feature_encoder.0.weight",
+      "shape": [
+        32,
+        10
+      ],
+      "offset": 4737,
+      "length": 320
+    },
+    {
+      "name": "input_projection.bias",
+      "shape": [
+        64
+      ],
+      "offset": 5057,
+      "length": 64
+    },
+    {
+      "name": "input_projection.weight",
+      "shape": [
+        64,
+        1
+      ],
+      "offset": 5121,
+      "length": 64
+    },
+    {
+      "name": "pos_encoder.pe",
+      "shape": [
+        60,
+        64
+      ],
+      "offset": 5185,
+      "length": 3840
+    },
+    {
+      "name": "transformer_encoder.layers.0.linear1.bias",
+      "shape": [
+        128
+      ],
+      "offset": 9025,
+      "length": 128
+    },
+    {
+      "name": "transformer_encoder.layers.0.linear1.weight",
+      "shape": [
+        128,
+        64
+      ],
+      "offset": 9153,
+      "length": 8192
+    },
+    {
+      "name": "transformer_encoder.layers.0.linear2.bias",
+      "shape": [
+        64
+      ],
+      "offset": 17345,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.linear2.weight",
+      "shape": [
+        64,
+        128
+      ],
+      "offset": 17409,
+      "length": 8192
+    },
+    {
+      "name": "transformer_encoder.layers.0.norm1.bias",
+      "shape": [
+        64
+      ],
+      "offset": 25601,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.norm1.weight",
+      "shape": [
+        64
+      ],
+      "offset": 25665,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.norm2.bias",
+      "shape": [
+        64
+      ],
+      "offset": 25729,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.norm2.weight",
+      "shape": [
+        64
+      ],
+      "offset": 25793,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.self_attn.in_proj_bias",
+      "shape": [
+        192
+      ],
+      "offset": 25857,
+      "length": 192
+    },
+    {
+      "name": "transformer_encoder.layers.0.self_attn.in_proj_weight",
+      "shape": [
+        192,
+        64
+      ],
+      "offset": 26049,
+      "length": 12288
+    },
+    {
+      "name": "transformer_encoder.layers.0.self_attn.out_proj.bias",
+      "shape": [
+        64
+      ],
+      "offset": 38337,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.0.self_attn.out_proj.weight",
+      "shape": [
+        64,
+        64
+      ],
+      "offset": 38401,
+      "length": 4096
+    },
+    {
+      "name": "transformer_encoder.layers.1.linear1.bias",
+      "shape": [
+        128
+      ],
+      "offset": 42497,
+      "length": 128
+    },
+    {
+      "name": "transformer_encoder.layers.1.linear1.weight",
+      "shape": [
+        128,
+        64
+      ],
+      "offset": 42625,
+      "length": 8192
+    },
+    {
+      "name": "transformer_encoder.layers.1.linear2.bias",
+      "shape": [
+        64
+      ],
+      "offset": 50817,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.linear2.weight",
+      "shape": [
+        64,
+        128
+      ],
+      "offset": 50881,
+      "length": 8192
+    },
+    {
+      "name": "transformer_encoder.layers.1.norm1.bias",
+      "shape": [
+        64
+      ],
+      "offset": 59073,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.norm1.weight",
+      "shape": [
+        64
+      ],
+      "offset": 59137,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.norm2.bias",
+      "shape": [
+        64
+      ],
+      "offset": 59201,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.norm2.weight",
+      "shape": [
+        64
+      ],
+      "offset": 59265,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.self_attn.in_proj_bias",
+      "shape": [
+        192
+      ],
+      "offset": 59329,
+      "length": 192
+    },
+    {
+      "name": "transformer_encoder.layers.1.self_attn.in_proj_weight",
+      "shape": [
+        192,
+        64
+      ],
+      "offset": 59521,
+      "length": 12288
+    },
+    {
+      "name": "transformer_encoder.layers.1.self_attn.out_proj.bias",
+      "shape": [
+        64
+      ],
+      "offset": 71809,
+      "length": 64
+    },
+    {
+      "name": "transformer_encoder.layers.1.self_attn.out_proj.weight",
+      "shape": [
+        64,
+        64
+      ],
+      "offset": 71873,
+      "length": 4096
+    }
+  ]
+}

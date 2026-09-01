@@ -118,6 +118,24 @@ jobs:
             exit 1
           fi
 
+  web:
+    # The browser demo is a third implementation of the forward pass. It gets
+    # the same treatment as the numpy one: checked against golden vectors
+    # generated from Python, including Monte Carlo statistics, because the
+    # deterministic path cannot reveal a missing dropout site.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+
+      - name: Parity tests against the Python fixture
+        run: node --test tests/web/
+
   docker:
     # Proves the image still builds on every change, so a broken Dockerfile is
     # caught here rather than at tag time when a release is already in motion.
