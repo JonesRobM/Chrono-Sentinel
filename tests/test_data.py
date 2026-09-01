@@ -9,8 +9,6 @@ resulting model scored below chance. Nothing in the code said so, so these
 tests say it instead.
 """
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -38,7 +36,9 @@ def make_frame(n: int, freq_minutes: int = 5) -> pd.DataFrame:
     start = pd.Timestamp("2024-01-01")
     return pd.DataFrame(
         {
-            "timestamp": [start + pd.Timedelta(minutes=freq_minutes * i) for i in range(n)],
+            "timestamp": [
+                start + pd.Timedelta(minutes=freq_minutes * i) for i in range(n)
+            ],
             "value": np.arange(n, dtype=float),
         }
     )
@@ -95,7 +95,9 @@ class TestWindowing:
     def test_shapes_and_stride(self):
         values = np.arange(100, dtype=np.float32)
         labels = np.zeros(100, dtype=np.int64)
-        windows, window_labels = create_windows(values, labels, window_size=10, step_size=5)
+        windows, window_labels = create_windows(
+            values, labels, window_size=10, step_size=5
+        )
         assert windows.shape == (19, 10)
         assert window_labels.shape == (19,)
         np.testing.assert_array_equal(windows[1], values[5:15])

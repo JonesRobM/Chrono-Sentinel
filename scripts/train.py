@@ -55,22 +55,38 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train anomaly detection transformer on NAB data"
     )
-    parser.add_argument("--epochs", type=int, default=80, help="Maximum training epochs")
+    parser.add_argument(
+        "--epochs", type=int, default=80, help="Maximum training epochs"
+    )
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
-    parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
-    parser.add_argument("--window-size", type=int, default=50, help="Sliding window size")
-    parser.add_argument("--step-size", type=int, default=10, help="Step between windows")
+    parser.add_argument(
+        "--weight-decay", type=float, default=1e-4, help="AdamW weight decay"
+    )
+    parser.add_argument(
+        "--window-size", type=int, default=50, help="Sliding window size"
+    )
+    parser.add_argument(
+        "--step-size", type=int, default=10, help="Step between windows"
+    )
     parser.add_argument(
         "--window-frac",
         type=float,
         default=DEFAULT_ANOMALY_WINDOW_FRAC,
         help="Fraction of each series labelled anomalous (NAB scoring uses 0.10)",
     )
-    parser.add_argument("--d-model", type=int, default=64, help="Transformer model dimension")
-    parser.add_argument("--num-layers", type=int, default=2, help="Number of transformer layers")
-    parser.add_argument("--nhead", type=int, default=4, help="Number of attention heads")
-    parser.add_argument("--dropout", type=float, default=0.2, help="Dropout probability")
+    parser.add_argument(
+        "--d-model", type=int, default=64, help="Transformer model dimension"
+    )
+    parser.add_argument(
+        "--num-layers", type=int, default=2, help="Number of transformer layers"
+    )
+    parser.add_argument(
+        "--nhead", type=int, default=4, help="Number of attention heads"
+    )
+    parser.add_argument(
+        "--dropout", type=float, default=0.2, help="Dropout probability"
+    )
     parser.add_argument(
         "--patience",
         type=int,
@@ -113,7 +129,10 @@ def parse_args() -> argparse.Namespace:
         "--output-dir", type=str, default="outputs", help="Directory to save outputs"
     )
     parser.add_argument(
-        "--checkpoint-name", type=str, default="best_model.pt", help="Checkpoint filename"
+        "--checkpoint-name",
+        type=str,
+        default="best_model.pt",
+        help="Checkpoint filename",
     )
     return parser.parse_args()
 
@@ -207,9 +226,15 @@ def main() -> None:
         batch_size=args.batch_size,
         window_frac=args.window_frac,
     )
-    print(f"  train series: {len(DEFAULT_TRAIN_SERIES)}  windows: {len(train_loader.dataset)}")
-    print(f"  val   series: {len(DEFAULT_VAL_SERIES)}  windows: {len(val_loader.dataset)}")
-    print(f"  test  series: {len(DEFAULT_TEST_SERIES)}  windows: {len(test_loader.dataset)}")
+    print(
+        f"  train series: {len(DEFAULT_TRAIN_SERIES)}  windows: {len(train_loader.dataset)}"
+    )
+    print(
+        f"  val   series: {len(DEFAULT_VAL_SERIES)}  windows: {len(val_loader.dataset)}"
+    )
+    print(
+        f"  test  series: {len(DEFAULT_TEST_SERIES)}  windows: {len(test_loader.dataset)}"
+    )
     print(f"  positive-class weight: {pos_weight.item():.2f}")
 
     feature_dim = 0 if args.no_features else len(get_feature_names())
@@ -223,7 +248,9 @@ def main() -> None:
     ).to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Model parameters: {num_params:,}  (feature branch: {'off' if feature_dim == 0 else 'on'})")
+    print(
+        f"Model parameters: {num_params:,}  (feature branch: {'off' if feature_dim == 0 else 'on'})"
+    )
 
     # BCEWithLogitsLoss fuses the sigmoid into the loss for numerical
     # stability and supports pos_weight directly.
@@ -264,7 +291,9 @@ def main() -> None:
     print("\nStarting training...")
     for epoch in range(1, args.epochs + 1):
         train_loss, _, _ = run_epoch(model, train_loader, criterion, device, optimiser)
-        val_loss, val_labels, val_probs = run_epoch(model, val_loader, criterion, device)
+        val_loss, val_labels, val_probs = run_epoch(
+            model, val_loader, criterion, device
+        )
         val_auc = safe_auc(val_labels, val_probs)
         val_ap = safe_ap(val_labels, val_probs)
 

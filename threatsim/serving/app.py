@@ -25,7 +25,6 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -45,7 +44,7 @@ from threatsim.serving.schemas import (
 logger = logging.getLogger("chrono_sentinel")
 
 SERVICE_NAME = "chrono-sentinel"
-SERVICE_VERSION = "0.2.1"
+SERVICE_VERSION = "0.2.2"
 
 
 def _env_path(name: str, default: str) -> Path:
@@ -64,12 +63,12 @@ class ServiceState:
     """Holds what the process loaded at startup."""
 
     def __init__(self) -> None:
-        self.scorer: Optional[AnomalyScorer] = None
-        self.reference: Optional[ReferenceProfile] = None
+        self.scorer: AnomalyScorer | None = None
+        self.reference: ReferenceProfile | None = None
         self.metrics = ServiceMetrics(
             drift_buffer_size=_env_int("CHRONO_DRIFT_BUFFER", 2000)
         )
-        self.load_error: Optional[str] = None
+        self.load_error: str | None = None
 
     @property
     def ready(self) -> bool:
@@ -103,7 +102,7 @@ def load_resources() -> None:
             state.scorer.model_version,
             state.scorer.window_size,
         )
-    except Exception as exc:  # noqa: BLE001 - surfaced through /readyz
+    except Exception as exc:
         state.load_error = f"model: {exc}"
         logger.error("Could not load model from %s: %s", model_path, exc)
         return
@@ -116,7 +115,7 @@ def load_resources() -> None:
                 "Loaded drift reference built from %d windows",
                 state.reference.n_reference_windows,
             )
-        except Exception as exc:  # noqa: BLE001 - drift is optional
+        except Exception as exc:
             logger.error("Could not load reference from %s: %s", reference_path, exc)
     else:
         logger.warning(

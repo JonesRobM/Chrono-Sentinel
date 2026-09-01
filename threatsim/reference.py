@@ -26,10 +26,11 @@ quietly goes stale, which is the exact failure this is meant to catch.
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -117,15 +118,15 @@ class ReferenceProfile:
     JSON, and loaded by the serving layer at startup.
     """
 
-    feature_names: List[str]
-    feature_bin_edges: Dict[str, List[float]]
-    feature_proportions: Dict[str, List[float]]
-    score_bin_edges: List[float]
-    score_proportions: List[float]
+    feature_names: list[str]
+    feature_bin_edges: dict[str, list[float]]
+    feature_proportions: dict[str, list[float]]
+    score_bin_edges: list[float]
+    score_proportions: list[float]
     n_reference_windows: int
     n_bins: int = DEFAULT_N_BINS
     created_at: str = ""
-    source: Dict[str, Any] = field(default_factory=dict)
+    source: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -134,7 +135,7 @@ class ReferenceProfile:
         feature_names: Sequence[str],
         scores: np.ndarray,
         n_bins: int = DEFAULT_N_BINS,
-        source: Optional[Dict[str, Any]] = None,
+        source: dict[str, Any] | None = None,
     ) -> "ReferenceProfile":
         """
         Builds a profile from training-split features and model scores.
@@ -155,8 +156,8 @@ class ReferenceProfile:
                 f"{len(feature_names)} names were given"
             )
 
-        edges: Dict[str, List[float]] = {}
-        proportions: Dict[str, List[float]] = {}
+        edges: dict[str, list[float]] = {}
+        proportions: dict[str, list[float]] = {}
         for index, name in enumerate(feature_names):
             column = features[:, index]
             column_edges = quantile_bin_edges(column, n_bins)
@@ -177,7 +178,9 @@ class ReferenceProfile:
             source=source or {},
         )
 
-    def drift(self, live_features: np.ndarray, live_scores: np.ndarray) -> Dict[str, float]:
+    def drift(
+        self, live_features: np.ndarray, live_scores: np.ndarray
+    ) -> dict[str, float]:
         """
         Computes PSI for every feature and for the score distribution.
 
@@ -188,7 +191,7 @@ class ReferenceProfile:
         Returns:
             Mapping of feature name (plus "__score__") to PSI.
         """
-        result: Dict[str, float] = {}
+        result: dict[str, float] = {}
 
         for index, name in enumerate(self.feature_names):
             live = bin_proportions(
@@ -205,7 +208,7 @@ class ReferenceProfile:
 
         return result
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialises the profile to a JSON-compatible dict."""
         return {
             "feature_names": self.feature_names,
@@ -220,7 +223,7 @@ class ReferenceProfile:
         }
 
     @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "ReferenceProfile":
+    def from_dict(cls, payload: dict[str, Any]) -> "ReferenceProfile":
         """Restores a profile from its serialised form."""
         return cls(**payload)
 

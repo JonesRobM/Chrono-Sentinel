@@ -22,7 +22,9 @@ FEATURES = 10
 def model() -> TimeSeriesTransformer:
     """A small model with the feature branch enabled, in eval mode."""
     torch.manual_seed(0)
-    net = create_model(window_size=WINDOW, d_model=32, num_layers=1, feature_dim=FEATURES)
+    net = create_model(
+        window_size=WINDOW, d_model=32, num_layers=1, feature_dim=FEATURES
+    )
     net.eval()
     return net
 
@@ -142,9 +144,13 @@ class TestMCDropout:
         """An eval-mode model must still be in eval mode afterwards."""
         x, f = batch
         assert not model.training
-        dropouts_before = [m.training for m in model.modules() if isinstance(m, torch.nn.Dropout)]
+        dropouts_before = [
+            m.training for m in model.modules() if isinstance(m, torch.nn.Dropout)
+        ]
         mc_dropout_predict(model, x, f, n_samples=5)
-        dropouts_after = [m.training for m in model.modules() if isinstance(m, torch.nn.Dropout)]
+        dropouts_after = [
+            m.training for m in model.modules() if isinstance(m, torch.nn.Dropout)
+        ]
         assert dropouts_before == dropouts_after
         assert not model.training
 

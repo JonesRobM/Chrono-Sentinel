@@ -11,7 +11,7 @@ This module depends on numpy and `threatsim.features` only.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 
@@ -29,7 +29,7 @@ class FeatureScaler:
 
     mean: np.ndarray
     std: np.ndarray
-    feature_names: List[str]
+    feature_names: list[str]
 
     @classmethod
     def fit(cls, features: np.ndarray) -> "FeatureScaler":
@@ -43,7 +43,7 @@ class FeatureScaler:
         """Applies the fitted transform."""
         return ((features - self.mean) / self.std).astype(np.float32)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialises to plain lists for checkpointing."""
         return {
             "mean": self.mean.tolist(),
@@ -52,7 +52,7 @@ class FeatureScaler:
         }
 
     @classmethod
-    def from_dict(cls, payload: Dict[str, Any]) -> "FeatureScaler":
+    def from_dict(cls, payload: dict[str, Any]) -> "FeatureScaler":
         """Restores a scaler from its serialised form."""
         return cls(
             mean=np.asarray(payload["mean"], dtype=np.float32),

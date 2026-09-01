@@ -18,7 +18,7 @@ Reporting rules this script enforces, so the published figures mean something:
 Usage:
     python scripts/loadtest.py
     python scripts/loadtest.py --concurrency 16 --requests 2000
-    python scripts/loadtest.py --url https://<space>.hf.space --concurrency 4
+    python scripts/loadtest.py --url http://<host>:7860 --concurrency 4
     python scripts/loadtest.py --sweep-mc 1,10,30,100
 """
 
@@ -27,11 +27,9 @@ import asyncio
 import json
 import platform
 import statistics
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import httpx
 import numpy as np
@@ -40,27 +38,42 @@ import numpy as np
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Load test the scoring service")
-    parser.add_argument("--url", default="http://127.0.0.1:8077", help="Base URL of the service")
+    parser.add_argument(
+        "--url", default="http://127.0.0.1:8077", help="Base URL of the service"
+    )
     parser.add_argument("--requests", type=int, default=1000, help="Measured requests")
     parser.add_argument("--concurrency", type=int, default=8, help="In-flight requests")
-    parser.add_argument("--warmup", type=int, default=100, help="Warm-up requests, discarded")
-    parser.add_argument("--mc-samples", type=int, default=None, help="MC passes per request")
+    parser.add_argument(
+        "--warmup", type=int, default=100, help="Warm-up requests, discarded"
+    )
+    parser.add_argument(
+        "--mc-samples", type=int, default=None, help="MC passes per request"
+    )
     parser.add_argument(
         "--sweep-mc",
         type=str,
         default=None,
         help="Comma-separated mc_samples values to test in sequence, e.g. 1,10,30,100",
     )
-    parser.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for the synthetic windows")
     parser.add_argument(
-        "--output", type=str, default="benchmarks/results.json", help="Where to write results"
+        "--timeout", type=float, default=30.0, help="Per-request timeout"
     )
-    parser.add_argument("--label", type=str, default="local", help="Run label, e.g. local or spaces")
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Seed for the synthetic windows"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="benchmarks/results.json",
+        help="Where to write results",
+    )
+    parser.add_argument(
+        "--label", type=str, default="local", help="Run label, e.g. local or spaces"
+    )
     return parser.parse_args()
 
 
-def percentile(values: List[float], q: float) -> float:
+def percentile(values: list[float], q: float) -> float:
     """Linear-interpolated percentile, in the same units as the input."""
     return float(np.percentile(values, q)) if values else float("nan")
 
@@ -80,7 +93,7 @@ async def discover_window_size(client: httpx.AsyncClient, base_url: str) -> int:
     return int(payload["window_size"])
 
 
-def make_windows(count: int, window_size: int, seed: int) -> List[List[float]]:
+def make_windows(count: int, window_size: int, seed: int) -> list[list[float]]:
     """
     Builds a pool of synthetic windows spanning several shapes.
 
@@ -109,10 +122,10 @@ async def worker(
     client: httpx.AsyncClient,
     base_url: str,
     queue: asyncio.Queue,
-    mc_samples: Optional[int],
-    client_latencies: List[float],
-    server_latencies: List[float],
-    failures: Dict[str, int],
+    mc_samples: int | None,
+    client_latencies: list[float],
+    server_latencies: list[float],
+    failures: dict[str, int],
 ) -> None:
     """Consumes windows from the queue and records per-request timings."""
     while True:
@@ -121,7 +134,7 @@ async def worker(
         except asyncio.QueueEmpty:
             return
 
-        body: Dict[str, object] = {"values": window}
+        body: dict[str, object] = {"values": window}
         if mc_samples is not None:
             body["mc_samples"] = mc_samples
 
@@ -133,8 +146,10 @@ async def worker(
                 client_latencies.append(elapsed * 1000.0)
                 server_latencies.append(float(response.json()["inference_ms"]))
             else:
-                failures[str(response.status_code)] = failures.get(str(response.status_code), 0) + 1
-        except Exception as exc:  # noqa: BLE001 - counted, not raised
+                failures[str(response.status_code)] = (
+                    failures.get(str(response.status_code), 0) + 1
+                )
+        except Exception as exc:
             elapsed = time.perf_counter() - began
             failures[type(exc).__name__] = failures.get(type(exc).__name__, 0) + 1
         finally:
@@ -143,27 +158,36 @@ async def worker(
 
 async def run_phase(
     base_url: str,
-    windows: List[List[float]],
+    windows: list[list[float]],
     concurrency: int,
-    mc_samples: Optional[int],
+    mc_samples: int | None,
     timeout: float,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Runs one measured phase and returns its timings."""
     queue: asyncio.Queue = asyncio.Queue()
     for window in windows:
         queue.put_nowait(window)
 
-    client_latencies: List[float] = []
-    server_latencies: List[float] = []
-    failures: Dict[str, int] = {}
+    client_latencies: list[float] = []
+    server_latencies: list[float] = []
+    failures: dict[str, int] = {}
 
-    limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
+    limits = httpx.Limits(
+        max_connections=concurrency, max_keepalive_connections=concurrency
+    )
     async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
         began = time.perf_counter()
         await asyncio.gather(
             *[
-                worker(client, base_url, queue, mc_samples,
-                       client_latencies, server_latencies, failures)
+                worker(
+                    client,
+                    base_url,
+                    queue,
+                    mc_samples,
+                    client_latencies,
+                    server_latencies,
+                    failures,
+                )
                 for _ in range(concurrency)
             ]
         )
@@ -177,7 +201,7 @@ async def run_phase(
     }
 
 
-def summarise(phase: Dict[str, object], concurrency: int) -> Dict[str, object]:
+def summarise(phase: dict[str, object], concurrency: int) -> dict[str, object]:
     """Reduces a phase's raw timings to the reported statistics."""
     client = phase["client_latencies_ms"]
     server = phase["server_latencies_ms"]
@@ -212,8 +236,10 @@ async def main_async(args: argparse.Namespace) -> None:
         window_size = await discover_window_size(client, args.url)
     print(f"Target {args.url}  window_size={window_size}")
 
-    mc_values: List[Optional[int]] = (
-        [int(v) for v in args.sweep_mc.split(",")] if args.sweep_mc else [args.mc_samples]
+    mc_values: list[int | None] = (
+        [int(v) for v in args.sweep_mc.split(",")]
+        if args.sweep_mc
+        else [args.mc_samples]
     )
 
     phases = {}
@@ -264,11 +290,11 @@ def main() -> None:
     args = parse_args()
     try:
         asyncio.run(main_async(args))
-    except httpx.ConnectError:
+    except httpx.ConnectError as exc:
         raise SystemExit(
             f"Could not connect to {args.url}. Start the service first:\n"
             "  uvicorn threatsim.serving.app:app --port 8077"
-        )
+        ) from exc
 
 
 if __name__ == "__main__":

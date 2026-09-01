@@ -7,11 +7,11 @@ and visualisation.
 
 import random
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 
 def set_seed(seed: int = 42) -> None:
@@ -48,8 +48,8 @@ def get_device() -> torch.device:
 def save_model(
     model: torch.nn.Module,
     path: str,
-    config: Optional[Dict[str, Any]] = None,
-    metrics: Optional[Dict[str, float]] = None,
+    config: dict[str, Any] | None = None,
+    metrics: dict[str, float] | None = None,
 ) -> None:
     """
     Saves model checkpoint with optional configuration and metrics.
@@ -76,8 +76,8 @@ def save_model(
 def load_model(
     model: torch.nn.Module,
     path: str,
-    device: Optional[torch.device] = None,
-) -> Dict[str, Any]:
+    device: torch.device | None = None,
+) -> dict[str, Any]:
     """
     Loads model checkpoint and returns metadata.
 
@@ -161,7 +161,7 @@ class EarlyStopping:
 def plot_training_history(
     train_losses: list,
     val_losses: list,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """
     Plots training and validation loss curves.
@@ -171,7 +171,7 @@ def plot_training_history(
         val_losses: List of validation losses per epoch.
         save_path: Optional path to save the figure.
     """
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
 
     epochs = range(1, len(train_losses) + 1)
     ax.plot(epochs, train_losses, "b-", label="Training Loss")
@@ -197,7 +197,7 @@ def plot_predictions_with_uncertainty(
     true_labels: np.ndarray,
     predictions: np.ndarray,
     uncertainties: np.ndarray,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     title: str = "Predictions with Uncertainty",
 ) -> None:
     """
@@ -211,7 +211,7 @@ def plot_predictions_with_uncertainty(
         save_path: Optional path to save the figure.
         title: Plot title.
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    _, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
     # Upper plot: predictions with uncertainty
     ax1.fill_between(
@@ -231,7 +231,9 @@ def plot_predictions_with_uncertainty(
     ax1.grid(True, alpha=0.3)
 
     # Lower plot: true labels
-    ax2.fill_between(timestamps, 0, true_labels, alpha=0.5, color="red", label="True Anomaly")
+    ax2.fill_between(
+        timestamps, 0, true_labels, alpha=0.5, color="red", label="True Anomaly"
+    )
     ax2.set_xlabel("Time")
     ax2.set_ylabel("True Label")
     ax2.legend(loc="upper right")
@@ -247,7 +249,7 @@ def plot_predictions_with_uncertainty(
     plt.close()
 
 
-def format_metrics(metrics: Dict[str, float], precision: int = 4) -> str:
+def format_metrics(metrics: dict[str, float], precision: int = 4) -> str:
     """
     Formats a dictionary of metrics as a readable string.
 

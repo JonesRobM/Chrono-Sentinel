@@ -16,16 +16,17 @@ contract is expressed.
 
 import hashlib
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 import numpy as np
 import torch
 
-from threatsim.scaling import FeatureScaler
 from threatsim.features import extract_window_features, get_feature_names
 from threatsim.models import TimeSeriesTransformer, create_model, mc_dropout_predict
+from threatsim.scaling import FeatureScaler
 
 DEFAULT_CHECKPOINT = Path("outputs/best_model.pt")
 
@@ -66,8 +67,8 @@ class AnomalyScorer:
     def __init__(
         self,
         model: TimeSeriesTransformer,
-        scaler: Optional[FeatureScaler],
-        config: Dict[str, Any],
+        scaler: FeatureScaler | None,
+        config: dict[str, Any],
         model_version: str,
         default_mc_samples: int = 30,
     ):
@@ -87,7 +88,7 @@ class AnomalyScorer:
         self.default_mc_samples = default_mc_samples
         self.window_size: int = int(config["window_size"])
         self.feature_dim: int = int(config.get("feature_dim", 0))
-        self.feature_names: List[str] = (
+        self.feature_names: list[str] = (
             scaler.feature_names if scaler is not None else get_feature_names()
         )
         # Enable dropout once, permanently. Every prediction this class makes
@@ -100,7 +101,7 @@ class AnomalyScorer:
         path: Path = DEFAULT_CHECKPOINT,
         device: str = "cpu",
         default_mc_samples: int = 30,
-        num_threads: Optional[int] = None,
+        num_threads: int | None = None,
     ) -> "AnomalyScorer":
         """
         Builds a scorer from a saved checkpoint.
@@ -203,7 +204,7 @@ class AnomalyScorer:
     def score(
         self,
         values: Sequence[float],
-        mc_samples: Optional[int] = None,
+        mc_samples: int | None = None,
         interval_sigma: float = 2.0,
     ) -> ScoreResult:
         """
@@ -259,7 +260,7 @@ class AnomalyScorer:
             inference_seconds=elapsed,
         )
 
-    def info(self) -> Dict[str, str]:
+    def info(self) -> dict[str, str]:
         """Returns identifying metadata for /healthz and the metrics endpoint."""
         return {
             "model_version": self.model_version,

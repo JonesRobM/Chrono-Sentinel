@@ -16,7 +16,6 @@ BCEWithLogitsLoss. Use predict_proba where a probability is wanted.
 """
 
 import math
-from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -150,7 +149,7 @@ class TimeSeriesTransformer(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, features: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, features: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Forward pass through the transformer.
@@ -184,7 +183,7 @@ class TimeSeriesTransformer(nn.Module):
         return self.classifier(x).squeeze(-1)
 
     def predict_proba(
-        self, x: torch.Tensor, features: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, features: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Returns anomaly probabilities rather than logits.
@@ -220,11 +219,11 @@ class TimeSeriesTransformer(nn.Module):
 def mc_dropout_predict(
     model: TimeSeriesTransformer,
     x: torch.Tensor,
-    features: Optional[torch.Tensor] = None,
+    features: torch.Tensor | None = None,
     n_samples: int = 30,
     batched: bool = True,
     manage_mode: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Performs Monte Carlo Dropout prediction for uncertainty quantification.
 
@@ -278,9 +277,7 @@ def mc_dropout_predict(
                 mean = predictions.mean(dim=1)
                 std = predictions.std(dim=1)
             else:
-                samples = [
-                    torch.sigmoid(model(x, features)) for _ in range(n_samples)
-                ]
+                samples = [torch.sigmoid(model(x, features)) for _ in range(n_samples)]
                 stacked = torch.stack(samples, dim=0)  # (n_samples, batch)
                 mean = stacked.mean(dim=0)
                 std = stacked.std(dim=0)

@@ -61,7 +61,9 @@ def _diverse_window(window_size: int, index: int, rng) -> list:
         window = np.linspace(rng.uniform(0, 50), rng.uniform(60, 200), window_size)
     elif family == 3:
         half = window_size // 2
-        window = np.r_[np.full(half, 85.0), np.full(window_size - half, rng.uniform(0, 60))]
+        window = np.r_[
+            np.full(half, 85.0), np.full(window_size - half, rng.uniform(0, 60))
+        ]
     elif family == 4:
         window = 85 + rng.uniform(2, 20) * np.sin(
             np.arange(window_size) * rng.uniform(0.1, 1.5)
@@ -137,11 +139,14 @@ class TestScoring:
         )
 
     def test_scores_differ_across_window_shapes(self, client, window_size):
-        flat = client.post("/score", json={"values": [85.0] * window_size}).json()["score"]
+        flat = client.post("/score", json={"values": [85.0] * window_size}).json()[
+            "score"
+        ]
         step = client.post(
             "/score",
             json={
-                "values": [85.0] * (window_size // 2) + [20.0] * (window_size - window_size // 2)
+                "values": [85.0] * (window_size // 2)
+                + [20.0] * (window_size - window_size // 2)
             },
         ).json()["score"]
         assert abs(flat - step) > 0.05
@@ -188,7 +193,9 @@ class TestInputValidation:
         conforming client cannot encode them, but a hand-rolled one can and
         Python's parser accepts them. They must not reach the model.
         """
-        body = '{"values": [' + ",".join([literal] + ["85.0"] * (window_size - 1)) + "]}"
+        body = (
+            '{"values": [' + ",".join([literal] + ["85.0"] * (window_size - 1)) + "]}"
+        )
         response = client.post(
             "/score", content=body, headers={"Content-Type": "application/json"}
         )
@@ -223,7 +230,9 @@ class TestMetrics:
     def test_request_counter_increments(self, client, window_size):
         def count() -> float:
             for line in client.get("/metrics").text.splitlines():
-                if line.startswith('chrono_requests_total{endpoint="/score",status="200"}'):
+                if line.startswith(
+                    'chrono_requests_total{endpoint="/score",status="200"}'
+                ):
                     return float(line.rsplit(" ", 1)[1])
             return 0.0
 
@@ -282,7 +291,7 @@ class TestDrift:
 
         state.metrics.reset_buffer()
         rng = np.random.default_rng(3)
-        for i in range(state.metrics.min_drift_samples + 10):
+        for _ in range(state.metrics.min_drift_samples + 10):
             client.post(
                 "/score",
                 json={"values": [float(v) for v in 85 + rng.normal(0, 1, window_size)]},
@@ -291,7 +300,7 @@ class TestDrift:
         body = client.get("/drift").json()
         assert body["observations_in_buffer"] >= state.metrics.min_drift_samples
         assert body["features"], "drift should be reported once the buffer fills"
-        for name, entry in body["features"].items():
+        for entry in body["features"].values():
             assert entry["status"] in {"stable", "moderate", "significant"}
             assert entry["psi"] >= 0
 

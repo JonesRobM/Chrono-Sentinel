@@ -42,7 +42,10 @@ def parse_args() -> argparse.Namespace:
         help="torch intra-op threads. The service runs with 1.",
     )
     parser.add_argument(
-        "--mc-samples", type=str, default="10,30,100", help="Comma-separated sample counts"
+        "--mc-samples",
+        type=str,
+        default="10,30,100",
+        help="Comma-separated sample counts",
     )
     parser.add_argument(
         "--equivalence-repeats",
@@ -90,34 +93,39 @@ def main() -> None:
         "equivalence": {},
     }
 
-    print(f"torch threads={args.threads}  repeats={args.repeats}  "
-          f"warmup={args.warmup} (discarded)")
-    print(f"\n{'mc':>5} {'sequential p50':>15} {'batched p50':>12} {'speedup':>8} "
-          f"{'seq p99':>9} {'bat p99':>9}")
+    print(
+        f"torch threads={args.threads}  repeats={args.repeats}  "
+        f"warmup={args.warmup} (discarded)"
+    )
+    print(
+        f"\n{'mc':>5} {'sequential p50':>15} {'batched p50':>12} {'speedup':>8} "
+        f"{'seq p99':>9} {'bat p99':>9}"
+    )
 
     for mc_samples in (int(v) for v in args.mc_samples.split(",")):
-        sequential = time_calls(
-            lambda: mc_dropout_predict(
-                scorer.model, sequence, features,
-                n_samples=mc_samples, batched=False, manage_mode=False,
-            ),
-            args.repeats, args.warmup,
-        )
-        batched = time_calls(
-            lambda: mc_dropout_predict(
-                scorer.model, sequence, features,
-                n_samples=mc_samples, batched=True, manage_mode=False,
-            ),
-            args.repeats, args.warmup,
-        )
+
+        def run(batched: bool, n: int = mc_samples):
+            return mc_dropout_predict(
+                scorer.model,
+                sequence,
+                features,
+                n_samples=n,
+                batched=batched,
+                manage_mode=False,
+            )
+
+        sequential = time_calls(lambda: run(False), args.repeats, args.warmup)
+        batched = time_calls(lambda: run(True), args.repeats, args.warmup)
         speedup = sequential["p50"] / batched["p50"]
         results["speedup"][str(mc_samples)] = {
             "sequential_ms": sequential,
             "batched_ms": batched,
             "speedup_p50": round(speedup, 2),
         }
-        print(f"{mc_samples:>5} {sequential['p50']:>15.2f} {batched['p50']:>12.2f} "
-              f"{speedup:>7.1f}x {sequential['p99']:>9.2f} {batched['p99']:>9.2f}")
+        print(
+            f"{mc_samples:>5} {sequential['p50']:>15.2f} {batched['p50']:>12.2f} "
+            f"{speedup:>7.1f}x {sequential['p99']:>9.2f} {batched['p99']:>9.2f}"
+        )
 
     # Equivalence: the two forms draw independent dropout masks, so they cannot
     # agree sample-for-sample. They must agree on the estimates they produce.
@@ -127,8 +135,12 @@ def main() -> None:
         for seed in range(args.equivalence_repeats):
             torch.manual_seed(seed)
             mean, std = mc_dropout_predict(
-                scorer.model, sequence, features,
-                n_samples=30, batched=batched_flag, manage_mode=False,
+                scorer.model,
+                sequence,
+                features,
+                n_samples=30,
+                batched=batched_flag,
+                manage_mode=False,
             )
             means.append(mean.item())
             stds.append(std.item())
@@ -137,8 +149,10 @@ def main() -> None:
             "mean_of_sigmas": round(float(np.mean(stds)), 5),
             "sd_of_means": round(float(np.std(means)), 5),
         }
-        print(f"  {label:<11} mean {np.mean(means):.5f}  sigma {np.mean(stds):.5f}  "
-              f"sd of means {np.std(means):.5f}")
+        print(
+            f"  {label:<11} mean {np.mean(means):.5f}  sigma {np.mean(stds):.5f}  "
+            f"sd of means {np.std(means):.5f}"
+        )
 
     sequential_mean = results["equivalence"]["sequential"]["mean_of_means"]
     batched_mean = results["equivalence"]["batched"]["mean_of_means"]
@@ -150,9 +164,11 @@ def main() -> None:
     results["equivalence"]["sigma_relative_difference"] = round(
         abs(sequential_sigma - batched_sigma) / sequential_sigma, 4
     )
-    print(f"\n  mean differs by {results['equivalence']['mean_absolute_difference']:.5f} "
-          f"absolute; sigma by "
-          f"{100 * results['equivalence']['sigma_relative_difference']:.1f}% relative")
+    print(
+        f"\n  mean differs by {results['equivalence']['mean_absolute_difference']:.5f} "
+        f"absolute; sigma by "
+        f"{100 * results['equivalence']['sigma_relative_difference']:.1f}% relative"
+    )
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

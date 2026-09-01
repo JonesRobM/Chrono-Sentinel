@@ -1,0 +1,28 @@
+# Keeps the pinned dependency graph and the SHA-pinned actions from going
+# stale. Pinning is what makes CI reproducible; without an update channel it
+# also makes CI quietly obsolete, so the two belong together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    # torch is installed from the CPU wheel index, not PyPI. A Dependabot bump
+    # here would resolve against PyPI and pull the CUDA build.
+    ignore:
+      - dependency-name: torch

@@ -1,9 +1,9 @@
 name: Release
 
 # Builds and publishes the container image to GitHub Container Registry on
-# every version tag. The Hugging Face Space then deploys that exact image via
-# spaces/Dockerfile, so what runs in production is what CI built and tested,
-# not a separate rebuild from source.
+# every version tag. The published image is the deliverable: anyone can run
+# the service with a single `docker run` against a public, immutable tag, so
+# what a reader executes is exactly what CI built and tested.
 on:
   push:
     tags:
@@ -60,7 +60,7 @@ jobs:
         # GHCR rejects uppercase in a package path, and github.repository
         # preserves the repository's casing. metadata-action lowercases as a
         # convenience, but relying on that leaves the name it publishes under
-        # implicit -- and spaces/Dockerfile has to hardcode the same string.
+        # implicit, and the README documents that exact string.
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Derive tags and labels
@@ -68,9 +68,13 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
-          # No :latest. spaces/Dockerfile pins a concrete tag so the deployed
-          # artefact is always identifiable; a floating tag would make the
-          # README's measured numbers unattributable to any specific image.
+          # latest=false is required: metadata-action tags :latest by default
+          # on a semver push. The README pins a concrete tag so the artefact
+          # is always identifiable, and a floating tag would make its measured
+          # numbers unattributable to any specific image.
+          flavor: |
+            latest=false
+          # {{version}} of a v0.2.2 git tag renders as 0.2.2, without the "v".
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

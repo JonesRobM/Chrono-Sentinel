@@ -112,10 +112,14 @@ def main() -> None:
     output = Path(args.output)
     profile.save(output)
 
-    print(f"Score distribution: min {scores.min():.4f}  median "
-          f"{np.median(scores):.4f}  max {scores.max():.4f}")
-    print(f"Features profiled: {len(profile.feature_names)} + score, "
-          f"{profile.n_bins} bins each")
+    print(
+        f"Score distribution: min {scores.min():.4f}  median "
+        f"{np.median(scores):.4f}  max {scores.max():.4f}"
+    )
+    print(
+        f"Features profiled: {len(profile.feature_names)} + score, "
+        f"{profile.n_bins} bins each"
+    )
     print(f"Written to {output}")
 
 

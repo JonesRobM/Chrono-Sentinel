@@ -124,7 +124,9 @@ class TestReferenceProfile:
         live_scores = rng.uniform(0, 1, 2000)
         drift = profile.drift(live_features, live_scores)
         for name in FEATURE_NAMES:
-            assert drift[name] > PSI_SIGNIFICANT_THRESHOLD, f"{name} missed a 3-sigma shift"
+            assert drift[name] > PSI_SIGNIFICANT_THRESHOLD, (
+                f"{name} missed a 3-sigma shift"
+            )
 
     def test_score_drift_is_reported_separately(self):
         rng = np.random.default_rng(0)

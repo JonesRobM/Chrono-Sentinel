@@ -24,6 +24,7 @@ Usage:
 import argparse
 import json
 import sys
+from itertools import pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -144,7 +145,7 @@ def classification_metrics(labels, probs, threshold):
         "recall": float(recall_score(labels, predicted, zero_division=0)),
         "f1": float(f1_score(labels, predicted, zero_division=0)),
         "positive_rate": float(labels.mean()),
-        "n": int(len(labels)),
+        "n": len(labels),
     }
 
 
@@ -152,7 +153,7 @@ def expected_calibration_error(labels, probs, n_bins: int = 10) -> float:
     """Expected Calibration Error over equal-width probability bins."""
     edges = np.linspace(0, 1, n_bins + 1)
     ece = 0.0
-    for lower, upper in zip(edges[:-1], edges[1:]):
+    for lower, upper in pairwise(edges):
         in_bin = (probs > lower) & (probs <= upper)
         weight = in_bin.mean()
         if weight > 0:
@@ -175,12 +176,18 @@ def uncertainty_metrics(labels, probs, stds, threshold):
     metrics = {
         "mean_uncertainty": float(stds.mean()),
         "uncertainty_std_across_inputs": float(stds.std()),
-        "mean_uncertainty_correct": float(stds[correct].mean()) if correct.any() else float("nan"),
-        "mean_uncertainty_incorrect": float(stds[~correct].mean()) if (~correct).any() else float("nan"),
+        "mean_uncertainty_correct": float(stds[correct].mean())
+        if correct.any()
+        else float("nan"),
+        "mean_uncertainty_incorrect": float(stds[~correct].mean())
+        if (~correct).any()
+        else float("nan"),
     }
     if len(np.unique(errors)) > 1:
         metrics["error_detection_auc"] = float(roc_auc_score(errors, stds))
-        metrics["uncertainty_error_correlation"] = float(np.corrcoef(stds, errors)[0, 1])
+        metrics["uncertainty_error_correlation"] = float(
+            np.corrcoef(stds, errors)[0, 1]
+        )
     else:
         metrics["error_detection_auc"] = float("nan")
         metrics["uncertainty_error_correlation"] = float("nan")
@@ -287,8 +294,16 @@ def make_plots(labels, probs, stds, threshold, output_dir: Path):
 
     precision, recall, _ = precision_recall_curve(labels, probs)
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.plot(recall, precision, label=f"AP = {average_precision_score(labels, probs):.3f}")
-    ax.axhline(labels.mean(), ls="--", c="k", alpha=0.4, label=f"base rate = {labels.mean():.3f}")
+    ax.plot(
+        recall, precision, label=f"AP = {average_precision_score(labels, probs):.3f}"
+    )
+    ax.axhline(
+        labels.mean(),
+        ls="--",
+        c="k",
+        alpha=0.4,
+        label=f"base rate = {labels.mean():.3f}",
+    )
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
     ax.set_title("Precision-recall, held-out series")
@@ -299,7 +314,7 @@ def make_plots(labels, probs, stds, threshold, output_dir: Path):
 
     edges = np.linspace(0, 1, 11)
     centres, observed = [], []
-    for lower, upper in zip(edges[:-1], edges[1:]):
+    for lower, upper in pairwise(edges):
         in_bin = (probs > lower) & (probs <= upper)
         if in_bin.sum() > 0:
             centres.append(probs[in_bin].mean())
@@ -347,13 +362,19 @@ def main() -> None:
     )
 
     print(f"Running MC Dropout with {args.mc_samples} samples...")
-    val_probs, val_stds = mc_predict_split(
-        model, splits["val"]["windows"], splits["val"]["features"],
-        args.mc_samples, args.batch_size,
+    val_probs, _ = mc_predict_split(
+        model,
+        splits["val"]["windows"],
+        splits["val"]["features"],
+        args.mc_samples,
+        args.batch_size,
     )
     test_probs, test_stds = mc_predict_split(
-        model, splits["test"]["windows"], splits["test"]["features"],
-        args.mc_samples, args.batch_size,
+        model,
+        splits["test"]["windows"],
+        splits["test"]["features"],
+        args.mc_samples,
+        args.batch_size,
     )
 
     val_labels = splits["val"]["labels"]
@@ -373,7 +394,9 @@ def main() -> None:
                 test_labels, test_probs
             ),
         },
-        "uncertainty": uncertainty_metrics(test_labels, test_probs, test_stds, threshold),
+        "uncertainty": uncertainty_metrics(
+            test_labels, test_probs, test_stds, threshold
+        ),
         "mc_vs_deterministic": mc_vs_deterministic(
             model, splits, args.mc_samples, args.batch_size
         ),

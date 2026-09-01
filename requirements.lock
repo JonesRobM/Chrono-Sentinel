@@ -52,13 +52,13 @@ kiwisolver==1.5.1
     # via matplotlib
 matplotlib==3.11.1
     # via
-    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.UaY8gWAzqR/research-notorch.txt
+    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.nTSnaQeXaj/research-notorch.txt
     #   seaborn
 narwhals==2.25.0
     # via scikit-learn
 numpy==2.5.2
     # via
-    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.UaY8gWAzqR/research-notorch.txt
+    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.nTSnaQeXaj/research-notorch.txt
     #   contourpy
     #   matplotlib
     #   pandas
@@ -71,7 +71,7 @@ packaging==26.3
     #   pytest
 pandas==3.0.5
     # via
-    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.UaY8gWAzqR/research-notorch.txt
+    #   -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.nTSnaQeXaj/research-notorch.txt
     #   seaborn
 pillow==12.3.0
     # via matplotlib
@@ -99,12 +99,14 @@ python-dotenv==1.2.3
     # via uvicorn
 pyyaml==6.0.3
     # via uvicorn
+ruff==0.16.5
+    # via -r requirements-dev.txt
 scikit-learn==1.9.0
-    # via -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.UaY8gWAzqR/research-notorch.txt
+    # via -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.nTSnaQeXaj/research-notorch.txt
 scipy==1.18.1
     # via scikit-learn
 seaborn==0.13.2
-    # via -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.UaY8gWAzqR/research-notorch.txt
+    # via -r /var/folders/_6/m1sb1lqs7498tl7jsxswfkrm0000gq/T/tmp.nTSnaQeXaj/research-notorch.txt
 six==1.17.0
     # via python-dateutil
 starlette==1.6.0

@@ -17,6 +17,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    # Fast feedback: formatting and lint fail in seconds, before the slower
+    # test and image jobs spend a runner on the same commit.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        # Pinned to the version the working tree was verified against.
+        # Formatting rules change between minor releases, so an unpinned ruff
+        # turns a green local run into a red CI run for no code change.
+        run: pip install -r requirements-dev.txt ruff
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Formatting
+        run: ruff format --check --diff .
+
   test:
     runs-on: ubuntu-latest
     steps:

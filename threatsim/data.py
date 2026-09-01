@@ -19,17 +19,16 @@ window with no series identity.
 """
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
-from threatsim.features import extract_features, get_feature_names
+from threatsim.features import extract_features
 from threatsim.scaling import FeatureScaler
-
 
 # Series held out entirely for validation and test. Chosen to span both NAB
 # collections and several value scales, so the test split is a genuine
@@ -71,7 +70,7 @@ def get_nab_root() -> Path:
     return Path(__file__).parent.parent / "NAB_temp"
 
 
-def load_nab_labels(nab_root: Optional[Path] = None) -> Dict[str, List[str]]:
+def load_nab_labels(nab_root: Path | None = None) -> dict[str, list[str]]:
     """
     Loads anomaly labels from the NAB combined_labels.json file.
 
@@ -89,14 +88,14 @@ def load_nab_labels(nab_root: Optional[Path] = None) -> Dict[str, List[str]]:
         raise FileNotFoundError(
             f"{labels_path} not found. Run: python scripts/fetch_data.py"
         )
-    with open(labels_path, "r") as f:
+    with open(labels_path) as f:
         return json.load(f)
 
 
 def load_nab_data(
     dataset_name: str = "realKnownCause/machine_temperature_system_failure.csv",
-    nab_root: Optional[Path] = None,
-) -> Tuple[pd.DataFrame, List[str]]:
+    nab_root: Path | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
     """
     Loads a dataset from the Numenta Anomaly Benchmark (NAB).
 
@@ -167,7 +166,7 @@ def nab_anomaly_mask(
 
 def create_anomaly_mask(
     df: pd.DataFrame,
-    anomaly_timestamps: List[str],
+    anomaly_timestamps: list[str],
     window_minutes: int = 30,
 ) -> np.ndarray:
     """
@@ -207,7 +206,7 @@ def create_windows(
     labels: np.ndarray,
     window_size: int = 50,
     step_size: int = 10,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Creates sliding windows from time-series data.
 
@@ -272,7 +271,7 @@ class TimeSeriesDataset(Dataset):
         self,
         windows: np.ndarray,
         labels: np.ndarray,
-        features: Optional[np.ndarray] = None,
+        features: np.ndarray | None = None,
     ):
         """
         Args:
@@ -291,7 +290,7 @@ class TimeSeriesDataset(Dataset):
     def __len__(self) -> int:
         return len(self.windows)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, ...]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
         if self.features is not None:
             return self.windows[idx], self.features[idx], self.labels[idx]
         return self.windows[idx], self.labels[idx]
@@ -300,10 +299,10 @@ class TimeSeriesDataset(Dataset):
 def temporal_train_val_test_split(
     windows: np.ndarray,
     labels: np.ndarray,
-    features: Optional[np.ndarray] = None,
+    features: np.ndarray | None = None,
     train_ratio: float = 0.7,
     val_ratio: float = 0.15,
-) -> Dict[str, Tuple[np.ndarray, ...]]:
+) -> dict[str, tuple[np.ndarray, ...]]:
     """
     Splits a single series temporally (no shuffling) into train/val/test sets.
 
@@ -366,7 +365,7 @@ def build_series_windows(
     window_size: int,
     step_size: int,
     window_frac: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Loads the named series and cuts them all into windows.
 
@@ -399,13 +398,13 @@ def build_series_windows(
 
 
 def prepare_grouped_splits(
-    train_series: Optional[Sequence[str]] = None,
-    val_series: Optional[Sequence[str]] = None,
-    test_series: Optional[Sequence[str]] = None,
+    train_series: Sequence[str] | None = None,
+    val_series: Sequence[str] | None = None,
+    test_series: Sequence[str] | None = None,
     window_size: int = 50,
     step_size: int = 10,
     window_frac: float = DEFAULT_ANOMALY_WINDOW_FRAC,
-) -> Tuple[Dict[str, Dict[str, np.ndarray]], FeatureScaler]:
+) -> tuple[dict[str, dict[str, np.ndarray]], FeatureScaler]:
     """
     Builds train/val/test arrays from disjoint sets of NAB series.
 
@@ -425,7 +424,9 @@ def prepare_grouped_splits(
         'windows' (normalised), 'features' (scaled), 'labels' and 'origin'.
     """
     groups = {
-        "train": list(train_series if train_series is not None else DEFAULT_TRAIN_SERIES),
+        "train": list(
+            train_series if train_series is not None else DEFAULT_TRAIN_SERIES
+        ),
         "val": list(val_series if val_series is not None else DEFAULT_VAL_SERIES),
         "test": list(test_series if test_series is not None else DEFAULT_TEST_SERIES),
     }
@@ -437,7 +438,7 @@ def prepare_grouped_splits(
             f"which leaks: {sorted(overlap)}"
         )
 
-    raw: Dict[str, Dict[str, np.ndarray]] = {}
+    raw: dict[str, dict[str, np.ndarray]] = {}
     for name, series in groups.items():
         windows, labels, origin = build_series_windows(
             series, window_size, step_size, window_frac
@@ -448,7 +449,7 @@ def prepare_grouped_splits(
     train_features = extract_features(raw["train"]["raw_windows"])
     scaler = FeatureScaler.fit(train_features)
 
-    splits: Dict[str, Dict[str, np.ndarray]] = {}
+    splits: dict[str, dict[str, np.ndarray]] = {}
     for name, payload in raw.items():
         features = (
             train_features
@@ -467,14 +468,14 @@ def prepare_grouped_splits(
 
 
 def get_dataloaders(
-    train_series: Optional[Sequence[str]] = None,
-    val_series: Optional[Sequence[str]] = None,
-    test_series: Optional[Sequence[str]] = None,
+    train_series: Sequence[str] | None = None,
+    val_series: Sequence[str] | None = None,
+    test_series: Sequence[str] | None = None,
     window_size: int = 50,
     step_size: int = 10,
     batch_size: int = 32,
     window_frac: float = DEFAULT_ANOMALY_WINDOW_FRAC,
-) -> Tuple[DataLoader, DataLoader, DataLoader, torch.Tensor, FeatureScaler]:
+) -> tuple[DataLoader, DataLoader, DataLoader, torch.Tensor, FeatureScaler]:
     """
     Creates train/val/test DataLoaders from disjoint sets of NAB series.
 

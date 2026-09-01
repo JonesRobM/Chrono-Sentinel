@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threatsim"
+description = "Time-series anomaly detection with Monte Carlo Dropout uncertainty, served as a containerised HTTP API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Robert Jones" }]
+keywords = [
+    "anomaly-detection",
+    "time-series",
+    "uncertainty-quantification",
+    "monte-carlo-dropout",
+    "mlops",
+    "model-drift",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Version is read from threatsim/__init__.py so there is one source of truth.
+dynamic = ["version", "dependencies", "optional-dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/JonesRobM/Chrono-Sentinel"
+Repository = "https://github.com/JonesRobM/Chrono-Sentinel"
+Issues = "https://github.com/JonesRobM/Chrono-Sentinel/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "threatsim.__version__" }
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.dynamic.optional-dependencies]
+serve = { file = ["requirements-serve.txt"] }
+dev = { file = ["requirements-dev.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["threatsim*"]
+exclude = ["tests*", "scripts*", "notebooks*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Surface the reason for any skip. The suite is expected to run in full in CI,
+# so a skip means a fixture or artefact went missing, not that a check was
+# optional.
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+extend-exclude = ["NAB_temp", "outputs", "benchmarks", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # import sorting
+    "UP",  # pyupgrade: keep annotations current for the target version
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    # The project is deliberately documented in prose; long URLs and tabular
+    # comments in the workflows and docstrings are not worth wrapping.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Notebooks are exploratory: re-imports and display-only expressions are normal.
+"notebooks/*.ipynb" = ["E402", "E702", "F401", "F811", "B018", "B905"]
+# Scripts insert the repo root on sys.path before importing the package.
+"scripts/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["threatsim"]

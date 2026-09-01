@@ -7,7 +7,6 @@ and can be used alongside raw sequences in the transformer model.
 """
 
 import numpy as np
-from typing import Tuple
 
 
 def compute_slope(window: np.ndarray) -> float:
@@ -109,30 +108,27 @@ def extract_window_features(window: np.ndarray) -> np.ndarray:
     zero_crossings = compute_zero_crossings(window)
     autocorr = compute_autocorrelation(window, lag=1)
 
-    # Skewness: measure of asymmetry
-    if std > 0:
-        skewness = ((window - mean) ** 3).mean() / (std ** 3)
-    else:
-        skewness = 0.0
+    # Skewness (asymmetry) and kurtosis (tailedness, excess so normal = 0).
+    # A constant window has no shape to describe, so both are defined as zero
+    # rather than dividing by a zero standard deviation.
+    skewness = ((window - mean) ** 3).mean() / std**3 if std > 0 else 0.0
+    kurtosis = ((window - mean) ** 4).mean() / std**4 - 3.0 if std > 0 else 0.0
 
-    # Kurtosis: measure of tailedness (excess kurtosis, so normal = 0)
-    if std > 0:
-        kurtosis = ((window - mean) ** 4).mean() / (std ** 4) - 3.0
-    else:
-        kurtosis = 0.0
-
-    features = np.array([
-        mean,
-        std,
-        min_val,
-        max_val,
-        range_val,
-        slope,
-        skewness,
-        kurtosis,
-        zero_crossings,
-        autocorr,
-    ], dtype=np.float32)
+    features = np.array(
+        [
+            mean,
+            std,
+            min_val,
+            max_val,
+            range_val,
+            slope,
+            skewness,
+            kurtosis,
+            zero_crossings,
+            autocorr,
+        ],
+        dtype=np.float32,
+    )
 
     return features
 
@@ -160,7 +156,9 @@ def extract_features(windows: np.ndarray) -> np.ndarray:
     return features
 
 
-def normalise_features(features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def normalise_features(
+    features: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Normalises features to zero mean and unit variance.
 

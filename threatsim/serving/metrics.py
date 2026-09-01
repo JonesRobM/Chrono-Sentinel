@@ -23,7 +23,6 @@ useless.
 
 import threading
 from collections import deque
-from typing import Deque, Dict, Optional
 
 import numpy as np
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info
@@ -31,16 +30,35 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info
 from threatsim.reference import ReferenceProfile, classify_psi
 
 LATENCY_BUCKETS = (
-    0.001, 0.0025, 0.005, 0.0075,
-    0.01, 0.025, 0.05, 0.075,
-    0.1, 0.25, 0.5, 1.0, 2.5,
+    0.001,
+    0.0025,
+    0.005,
+    0.0075,
+    0.01,
+    0.025,
+    0.05,
+    0.075,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
     float("inf"),
 )
 
-SCORE_BUCKETS = tuple(np.round(np.linspace(0.0, 1.0, 11), 2).tolist()) + (float("inf"),)
+SCORE_BUCKETS = (*np.round(np.linspace(0.0, 1.0, 11), 2).tolist(), float("inf"))
 
 UNCERTAINTY_BUCKETS = (
-    0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5,
+    0.001,
+    0.005,
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.3,
+    0.5,
     float("inf"),
 )
 
@@ -61,7 +79,7 @@ class ServiceMetrics:
 
     def __init__(
         self,
-        registry: Optional[CollectorRegistry] = None,
+        registry: CollectorRegistry | None = None,
         drift_buffer_size: int = DEFAULT_DRIFT_BUFFER,
         min_drift_samples: int = MIN_DRIFT_SAMPLES,
     ):
@@ -141,11 +159,11 @@ class ServiceMetrics:
         )
 
         self._lock = threading.Lock()
-        self._feature_buffer: Deque[np.ndarray] = deque(maxlen=drift_buffer_size)
-        self._score_buffer: Deque[float] = deque(maxlen=drift_buffer_size)
-        self._reference: Optional[ReferenceProfile] = None
+        self._feature_buffer: deque[np.ndarray] = deque(maxlen=drift_buffer_size)
+        self._score_buffer: deque[float] = deque(maxlen=drift_buffer_size)
+        self._reference: ReferenceProfile | None = None
 
-    def set_reference(self, reference: Optional[ReferenceProfile]) -> None:
+    def set_reference(self, reference: ReferenceProfile | None) -> None:
         """Attaches the reference profile that drift is measured against."""
         self._reference = reference
         if reference is not None:
@@ -158,7 +176,7 @@ class ServiceMetrics:
                 }
             )
 
-    def set_model_info(self, info: Dict[str, str]) -> None:
+    def set_model_info(self, info: dict[str, str]) -> None:
         """Records the served checkpoint's identity."""
         self.model_info.info(info)
 
@@ -194,7 +212,7 @@ class ServiceMetrics:
             self._feature_buffer.append(np.asarray(scaled_features, dtype=np.float32))
             self._score_buffer.append(float(score))
 
-    def refresh_drift(self) -> Dict[str, float]:
+    def refresh_drift(self) -> dict[str, float]:
         """
         Recomputes PSI over the rolling buffer and updates the gauges.
 
@@ -223,7 +241,7 @@ class ServiceMetrics:
 
         return psi
 
-    def drift_summary(self) -> Dict[str, Dict[str, object]]:
+    def drift_summary(self) -> dict[str, dict[str, object]]:
         """Returns the current PSI values with their verbal classification."""
         psi = self.refresh_drift()
         return {

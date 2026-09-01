@@ -30,7 +30,9 @@ LABELS_PATH = "labels/combined_labels.json"
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Download NAB series used by this project")
+    parser = argparse.ArgumentParser(
+        description="Download NAB series used by this project"
+    )
     parser.add_argument(
         "--datasets",
         nargs="+",
@@ -107,7 +109,8 @@ def main() -> None:
     missing = [d for d in datasets if d not in labels]
     if missing:
         raise SystemExit(
-            "These datasets have no entry in combined_labels.json: " + ", ".join(missing)
+            "These datasets have no entry in combined_labels.json: "
+            + ", ".join(missing)
         )
 
     print(f"\n{len(datasets)} dataset(s) ready.")
