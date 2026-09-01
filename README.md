@@ -1,5 +1,6 @@
 # Chrono-Sentinel
 
+[![Live demo](https://img.shields.io/badge/demo-run%20in%20browser-89b4fa?logo=githubpages&logoColor=white)](https://jonesrobm.github.io/Chrono-Sentinel/)
 [![CI](https://github.com/JonesRobM/Chrono-Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/JonesRobM/Chrono-Sentinel/actions/workflows/ci.yml)
 [![Release](https://github.com/JonesRobM/Chrono-Sentinel/actions/workflows/release.yml/badge.svg)](https://github.com/JonesRobM/Chrono-Sentinel/actions/workflows/release.yml)
 [![Container](https://img.shields.io/badge/ghcr.io-chrono--sentinel-2496ED?logo=docker&logoColor=white)](https://github.com/JonesRobM/Chrono-Sentinel/pkgs/container/chrono-sentinel)
@@ -20,8 +21,9 @@ the service runs the forward pass in numpy from a 282 KB weights file, which
 takes the image from 1.35 GB to 355 MB.
 
 **[Try it in your browser](https://jonesrobm.github.io/Chrono-Sentinel/)** — draw a
-window and watch the detector rescore it. The model runs client-side; nothing
-is uploaded.
+window and watch the detector rescore it as you drag. The model runs entirely
+client-side from a 297 KB weights file; nothing is uploaded and there is no
+server to go down.
 
 Or run the service locally, without cloning anything:
 
@@ -44,6 +46,7 @@ docker run --rm -p 7860:7860 ghcr.io/jonesrobm/chrono-sentinel:0.3.0
 | **Serving** | FastAPI, 6.7 ms p50 single-client, ~360 req/s at concurrency 8 |
 | **Image** | 355 MB, no framework, non-root, 0.54 s to ready |
 | **Observability** | Prometheus latency, throughput, score distribution, PSI drift |
+| **Demo** | [Runs client-side](https://jonesrobm.github.io/Chrono-Sentinel/) on GitHub Pages, 297 KB of weights, no server |
 | **Pipeline** | Locked dependencies, lint + Python and JS tests + container smoke test in CI, GHCR on tag |
 
 Every number here came out of a script in this repo. Anything not yet measured
